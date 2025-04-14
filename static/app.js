@@ -1567,3 +1567,58 @@ function updateReclutaDetailsView(recluta) {
         detailsElements.estado.className = `badge badge-${recluta.estado === 'Activo' ? 'success' : (recluta.estado === 'Rechazado' ? 'danger' : 'warning')}`;
     }
 }
+
+function openAddReclutaModal() {
+    const modal = document.getElementById('add-recluta-modal');
+    if (modal) modal.style.display = 'block';
+
+    const saveButton = document.createElement('button');
+    saveButton.className = 'btn-primary';
+    saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
+    saveButton.onclick = saveRecluta;
+
+    const modalFooter = document.querySelector('#add-recluta-modal .modal-body');
+    if (modalFooter && !document.getElementById('guardar-recluta-btn')) {
+        saveButton.id = 'guardar-recluta-btn';
+        modalFooter.appendChild(saveButton);
+    }
+}
+
+function saveRecluta() {
+    const nombre = document.getElementById('recluta-nombre')?.value;
+    const email = document.getElementById('recluta-email')?.value;
+    const telefono = document.getElementById('recluta-telefono')?.value;
+    const estado = 'Activo'; // o puedes obtenerlo de un campo si lo tienes
+
+    if (!nombre || !email || !telefono) {
+        showNotification('Por favor, completa todos los campos del formulario', 'warning');
+        return;
+    }
+
+    const data = {
+        nombre,
+        email,
+        telefono,
+        estado
+    };
+
+    fetch('/api/reclutas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Error al guardar recluta');
+        return res.json();
+    })
+    .then(data => {
+        showNotification('Recluta guardado correctamente', 'success');
+        closeAddReclutaModal();
+        // Aquí podrías recargar la lista de reclutas si tienes una función
+        // getReclutas();
+    })
+    .catch(err => {
+        console.error(err);
+        showNotification('Error al guardar el recluta', 'error');
+    });
+}
