@@ -1,6 +1,9 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
-from models import db, Recluta, Usuario  # ✅ Incluye el modelo Usuario
+from models import db, Recluta, Usuario
+from PIL import Image, ImageDraw, ImageFont
+import io
+import os
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -15,7 +18,39 @@ with app.app_context():
         db.session.add(usuario)
         db.session.commit()
 
-# Rutas
+# Ruta para placeholders de imágenes
+@app.route('/api/placeholder/<int:width>/<int:height>')
+def placeholder(width, height):
+    # Limitar tamaños para evitar problemas
+    width = min(width, 800)
+    height = min(height, 800)
+    
+    # Crear una imagen gris con las dimensiones especificadas
+    img = Image.new('RGB', (width, height), color=(200, 200, 200))
+    draw = ImageDraw.Draw(img)
+    
+    # Dibujar un borde
+    draw.rectangle([(0, 0), (width-1, height-1)], outline=(150, 150, 150))
+    
+    # Añadir texto con el tamaño
+    text = f"{width}x{height}"
+    # Aquí podrías añadir una fuente si la tienes disponible
+    # font = ImageFont.truetype("arial.ttf", 14)
+    # draw.text((width//2-20, height//2-10), text, fill=(100, 100, 100), font=font)
+    draw.text((width//2-20, height//2-10), text, fill=(100, 100, 100))
+    
+    # Convertir a bytes para enviar
+    img_io = io.BytesIO()
+    img.save(img_io, 'PNG')
+    img_io.seek(0)
+    return send_file(img_io, mimetype='image/png')
+
+# Añadir ruta para favicon
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(app.static_folder, 'favicon.ico'), mimetype='image/x-icon')
+
+# Rutas existentes
 @app.route('/')
 def index():
     return render_template('index.html')

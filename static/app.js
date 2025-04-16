@@ -977,8 +977,8 @@ function initEventListeners() {
 
 // Funcionalidad de login mejorada
 function login() {
-    const email = document.getElementById('login-email')?.value;
-    const password = document.getElementById('login-password')?.value;
+    const email = document.getElementById('email')?.value;
+    const password = document.getElementById('password')?.value;
 
     if (!email || !password) {
         showNotification('Completa los campos de usuario y contraseña', 'warning');
@@ -989,6 +989,33 @@ function login() {
     if (loginButton) {
         loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
         loginButton.disabled = true;
+    }
+
+    // Para pruebas (si la API no está funcionando):
+    if (email === 'admin@example.com' && password === 'admin') {
+        currentGerente = { email: email, id: 1 };
+        
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+        
+        document.getElementById('gerente-name').textContent = email;
+        document.getElementById('dropdown-user-name').textContent = email;
+        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+        
+        if (document.getElementById('user-name')) 
+            document.getElementById('user-name').value = email;
+        if (document.getElementById('user-email')) 
+            document.getElementById('user-email').value = email;
+        
+        showNotification(`¡Bienvenido ${email}!`, 'success');
+        loadDemoReclutas();
+        
+        // Restablecer botón de login
+        if (loginButton) {
+            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
+            loginButton.disabled = false;
+        }
+        return;
     }
 
     fetch('/api/login', {
@@ -1008,12 +1035,15 @@ function login() {
 
         document.getElementById('gerente-name').textContent = currentGerente.email;
         document.getElementById('dropdown-user-name').textContent = currentGerente.email;
-        document.getElementById('dashboard-profile-pic').src = "/static/default-profile.png"; // O una ruta válida
+        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
 
-        document.getElementById('user-name').value = currentGerente.email;
-        document.getElementById('user-email').value = currentGerente.email;
+        if (document.getElementById('user-name')) 
+            document.getElementById('user-name').value = currentGerente.email;
+        if (document.getElementById('user-email')) 
+            document.getElementById('user-email').value = currentGerente.email;
 
         showNotification(`¡Bienvenido ${currentGerente.email}!`, 'success');
+        loadDemoReclutas();
     })
     .catch(err => {
         console.error(err);
@@ -1026,7 +1056,6 @@ function login() {
         }
     });
 }
-
 // Cierre de sesión
 function logout() {
     currentGerente = null;
