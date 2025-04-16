@@ -12,9 +12,16 @@ db.init_app(app)
 
 # Crear la base de datos y un usuario de prueba si no existe
 with app.app_context():
+    # Recreamos las tablas para aplicar los cambios en los modelos
     db.create_all()
+    # Verificamos si existe el usuario admin pero solo por email
     if not Usuario.query.filter_by(email='admin@example.com').first():
-        usuario = Usuario(email='admin@example.com', password='admin')
+        usuario = Usuario(
+            email='admin@example.com', 
+            password='admin',
+            nombre='Administrador',  # Añadimos un nombre por defecto
+            telefono='555-1234'      # Añadimos un teléfono por defecto
+        )
         db.session.add(usuario)
         db.session.commit()
 

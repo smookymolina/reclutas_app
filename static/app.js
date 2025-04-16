@@ -1,28 +1,764 @@
-// Actualizar la vista de detalles del recluta
-function updateReclutaDetailsView(recluta) {
-    if (!recluta) return;
+// Inicialización de variables globales
+let currentGerente = null;
+let profileImage = null;
+let reclutaImage = null;
+let currentReclutaId = null;
+let reclutas = [];
+let darkMode = false;
+
+// Evento para cuando se carga completamente el documento
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar listeners de eventos para la interfaz
+    initEventListeners();
     
-    const detailsElements = {
-        nombre: document.getElementById('detail-recluta-nombre'),
-        puesto: document.getElementById('detail-recluta-puesto'),
-        email: document.getElementById('detail-recluta-email'),
-        telefono: document.getElementById('detail-recluta-telefono'),
-        notas: document.getElementById('detail-recluta-notas'),
-        estado: document.getElementById('detail-recluta-estado')
+    // Comprobar si hay un tema guardado
+    checkSavedTheme();
+    
+    // Comprobar si hay una sesión activa
+    checkSession();
+    
+    // Inicializar calendario si estamos en esa sección
+    initCalendar();
+});
+
+// Comprobar si existe una sesión de usuario activa
+function checkSession() {
+    fetch('/api/usuario')
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+            throw new Error('No hay sesión activa');
+        })
+        .then(data => {
+            // Hay sesión activa, cargar dashboard
+            currentGerente = data;
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('dashboard-section').style.display = 'block';
+            
+            // Actualizar UI con datos de usuario
+            document.getElementById('gerente-name').textContent = currentGerente.nombre || currentGerente.email;
+            document.getElementById('dropdown-user-name').textContent = currentGerente.nombre || currentGerente.email;
+            
+            // Cargar foto de perfil si existe
+            if (currentGerente.foto_url) {
+                document.getElementById('dashboard-profile-pic').src = currentGerente.foto_url.startsWith('http')
+                    ? currentGerente.foto_url
+                    : (currentGerente.foto_url === 'default_profile.jpg' 
+                        ? "/api/placeholder/100/100" 
+                        : `/${currentGerente.foto_url}`);
+            } else {
+                document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+            }
+            
+            // Rellenar campos del perfil
+            if (document.getElementById('user-name')) 
+                document.getElementById('user-name').value = currentGerente.nombre || '';
+            if (document.getElementById('user-email')) 
+                document.getElementById('user-email').value = currentGerente.email || '';
+            if (document.getElementById('user-phone'))
+                document.getElementById('user-phone').value = currentGerente.telefono || '';
+            
+            // Cargar reclutas
+            loadReclutas();
+            
+            // Cargar estadísticas
+            loadEstadisticas();
+        })
+        .catch(error => {
+            console.log('No hay sesión activa:', error);
+            // No hay sesión, mostrar login
+            document.getElementById('login-section').style.display = 'block';
+            document.getElementById('dashboard-section').style.display = 'none';
+        });
+}
+
+// Cargar reclutas desde el backend
+function loadReclutas() {
+    fetch('/api/reclutas')
+        .then(response => {
+            if (!response.ok) throw new Error('Error al cargar reclutas');
+            return response.json();
+        })
+        .then(data => {
+            reclutas = data;
+            displayReclutas(reclutas);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al cargar reclutas: ' + error.message, 'error');
+        });
+}
+
+// Cargar estadísticas
+function loadEstadisticas() {
+    fetch('/api/estadisticas')
+        .then(response => {
+            if (!response.ok) throw new Error('Error al cargar estadísticas');
+            return response.json();
+        })
+        .then(data => {
+            // Actualizar elementos de estadísticas
+            const stats = {
+                totalReclutas: document.querySelector('.stat-card:nth-child(1) .stat-number'),
+                reclutasActivos: document.querySelector('.stat-card:nth-child(2) .stat-number'),
+                enProceso: document.querySelector('.stat-card:nth-child(3) .stat-number'),
+                entrevistasPendientes: document.querySelector('.stat-card:nth-child(4) .stat-number')
+            };
+            
+            if (stats.totalReclutas) stats.totalReclutas.textContent = data.total_reclutas;
+            if (stats.reclutasActivos) stats.reclutasActivos.textContent = data.reclutas_activos;
+            if (stats.enProceso) stats.enProceso.textContent = data.reclutas_proceso;
+            if (stats.entrevistasPendientes) stats.entrevistasPendientes.textContent = data.entrevistas_pendientes;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+// Inicialización de todos los event listeners
+function initEventListeners() {
+    // Listeners de navegación del dashboard
+    const navLinks = document.querySelectorAll('.dashboard-nav a');
+    if (navLinks && navLinks.length > 0) {
+        navLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetSection = this.getAttribute('data-section');
+                changeActiveSection(targetSection);
+            });
+        });
+    }
+    
+    // Toggle modo oscuro
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('click', toggleDarkMode);
+    }
+    
+    // Toggle de tema en configuración
+    const darkThemeToggle = document.getElementById('dark-theme-toggle');
+    if (darkThemeToggle) {
+        darkThemeToggle.addEventListener('change', function() {
+            toggleDarkMode(this.checked);
+        });
+    }
+    
+    // Cambio de color primario
+    const colorOptions = document.querySelectorAll('input[name="primary-color"]');
+    if (colorOptions && colorOptions.length > 0) {
+        colorOptions.forEach(option => {
+            option.addEventListener('change', function() {
+                changePrimaryColor(this.value);
+                document.querySelectorAll('.color-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                this.parentElement.classList.add('selected');
+            });
+        });
+    }
+    
+    // Color de fondo
+    const pageColorPicker = document.getElementById('page-color');
+    if (pageColorPicker) {
+        pageColorPicker.addEventListener('change', function() {
+            document.body.style.backgroundColor = this.value;
+        });
+    }
+    
+    // Manejo de la foto de perfil
+    const profileUploadInput = document.getElementById('profile-upload');
+    if (profileUploadInput) {
+        profileUploadInput.addEventListener('change', handleProfileImageChange);
+    }
+    
+    // Manejo de la foto del recluta
+    const reclutaUploadInput = document.getElementById('recluta-upload');
+    if (reclutaUploadInput) {
+        reclutaUploadInput.addEventListener('change', handleReclutaImageChange);
+    }
+    
+    // Botón de ayuda
+    const helpButton = document.getElementById('help-button');
+    if (helpButton) {
+        helpButton.addEventListener('click', showHelp);
+    }
+    
+    // Dropdown de perfil
+    const profileDropdownButton = document.getElementById('profile-dropdown-button');
+    if (profileDropdownButton) {
+        profileDropdownButton.addEventListener('click', toggleProfileDropdown);
+    }
+    
+    // Toggle visibilidad de contraseña
+    const togglePasswordButton = document.getElementById('toggle-password');
+    if (togglePasswordButton) {
+        togglePasswordButton.addEventListener('click', togglePasswordVisibility);
+    }
+    
+    // Cerrar notificaciones
+    const notificationCloseButton = document.getElementById('notification-close');
+    if (notificationCloseButton) {
+        notificationCloseButton.addEventListener('click', hideNotification);
+    }
+    
+    // Búsqueda de reclutas
+    const searchInput = document.getElementById('search-reclutas');
+    if (searchInput) {
+        searchInput.addEventListener('input', filterReclutas);
+    }
+    
+    // Filtro de estado
+    const filterEstado = document.getElementById('filter-estado');
+    if (filterEstado) {
+        filterEstado.addEventListener('change', filterReclutas);
+    }
+    
+    // Ordenar reclutas
+    const sortBy = document.getElementById('sort-by');
+    if (sortBy) {
+        sortBy.addEventListener('change', function() {
+            sortReclutas(null, this.value);
+        });
+    }
+    
+    // Botón de cambio de contraseña
+    const changePasswordBtn = document.getElementById('change-password-btn');
+    if (changePasswordBtn) {
+        changePasswordBtn.addEventListener('click', changePassword);
+    }
+    
+    // Cerrar dropdowns y modales al hacer clic fuera
+    window.addEventListener('click', function(event) {
+        closeMenusOnClickOutside(event);
+    });
+    
+    // Navegación de calendario
+    const prevMonthBtn = document.getElementById('prev-month');
+    const nextMonthBtn = document.getElementById('next-month');
+    if (prevMonthBtn && nextMonthBtn) {
+        prevMonthBtn.addEventListener('click', () => navigateCalendar(-1));
+        nextMonthBtn.addEventListener('click', () => navigateCalendar(1));
+    }
+    
+    // Botón para añadir evento en calendario
+    const addEventButton = document.getElementById('add-event-button');
+    if (addEventButton) {
+        addEventButton.addEventListener('click', () => {
+            // Mostrar modal para añadir evento
+            showNotification('Esta función estará disponible próximamente', 'warning');
+        });
+    }
+
+    // Botón de login
+    const loginButton = document.getElementById('login-button');
+    if (loginButton) {
+        loginButton.addEventListener('click', login);
+    }
+    
+    // Botón de logout
+    const logoutButton = document.getElementById('logout-button');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', logout);
+    }
+}
+
+// Funcionalidad de login mejorada
+function login() {
+    const email = document.getElementById('email')?.value;
+    const password = document.getElementById('password')?.value;
+
+    if (!email || !password) {
+        showNotification('Completa los campos de usuario y contraseña', 'warning');
+        return;
+    }
+
+    const loginButton = document.getElementById('login-button');
+    if (loginButton) {
+        loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+        loginButton.disabled = true;
+    }
+
+    fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Credenciales inválidas");
+        return res.json();
+    })
+    .then(data => {
+        currentGerente = data.usuario;
+
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+
+        document.getElementById('gerente-name').textContent = currentGerente.nombre || currentGerente.email;
+        document.getElementById('dropdown-user-name').textContent = currentGerente.nombre || currentGerente.email;
+        
+        // Cargar foto de perfil
+        if (currentGerente.foto_url) {
+            document.getElementById('dashboard-profile-pic').src = currentGerente.foto_url.startsWith('http')
+                ? currentGerente.foto_url
+                : (currentGerente.foto_url === 'default_profile.jpg' 
+                    ? "/api/placeholder/100/100" 
+                    : `/${currentGerente.foto_url}`);
+        } else {
+            document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+        }
+
+        if (document.getElementById('user-name')) 
+            document.getElementById('user-name').value = currentGerente.nombre || '';
+        if (document.getElementById('user-email')) 
+            document.getElementById('user-email').value = currentGerente.email || '';
+        if (document.getElementById('user-phone'))
+            document.getElementById('user-phone').value = currentGerente.telefono || '';
+
+        showNotification(`¡Bienvenido ${currentGerente.nombre || currentGerente.email}!`, 'success');
+        loadReclutas();
+        loadEstadisticas();
+    })
+    .catch(err => {
+        console.error(err);
+        showNotification('Usuario o contraseña incorrectos', 'error');
+    })
+    .finally(() => {
+        if (loginButton) {
+            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
+            loginButton.disabled = false;
+        }
+    });
+}
+
+// Cierre de sesión
+function logout() {
+    fetch('/api/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Error al cerrar sesión');
+        return res.json();
+    })
+    .then(() => {
+        currentGerente = null;
+        document.getElementById('login-section').style.display = 'block';
+        document.getElementById('dashboard-section').style.display = 'none';
+    
+        document.getElementById('email').value = '';
+        document.getElementById('password').value = '';
+    
+        showNotification('Sesión cerrada correctamente', 'success');
+    })
+    .catch(err => {
+        console.error(err);
+        showNotification('Error al cerrar sesión', 'error');
+    });
+}
+
+// Mostrar lista de reclutas en la tabla
+function displayReclutas(reclutasToDisplay) {
+    const reclutasList = document.getElementById('reclutas-list');
+    if (!reclutasList) return;
+    
+    reclutasList.innerHTML = '';
+    
+    if (!reclutasToDisplay || reclutasToDisplay.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td colspan="6" style="text-align: center;">No se encontraron reclutas. ¡Agrega tu primer recluta!</td>`;
+        reclutasList.appendChild(row);
+    } else {
+        reclutasToDisplay.forEach(recluta => {
+            const row = document.createElement('tr');
+            const badgeClass = recluta.estado === 'Activo' ? 'badge-success' : 
+                              (recluta.estado === 'Rechazado' ? 'badge-danger' : 'badge-warning');
+            
+            // Determinar la URL de la foto
+            const fotoUrl = recluta.foto_url ? 
+                (recluta.foto_url.startsWith('http') ? 
+                    recluta.foto_url : 
+                    (recluta.foto_url === 'default_profile.jpg' ? 
+                        "/api/placeholder/40/40" : 
+                        `/${recluta.foto_url}`)) : 
+                "/api/placeholder/40/40";
+            
+            row.innerHTML = `
+                <td><img src="${fotoUrl}" alt="${recluta.nombre}" class="recluta-foto"></td>
+                <td>${recluta.nombre}</td>
+                <td>${recluta.email}</td>
+                <td>${recluta.telefono}</td>
+                <td><span class="badge ${badgeClass}">${recluta.estado}</span></td>
+                <td>
+                    <button class="action-btn" onclick="viewRecluta(${recluta.id})" title="Ver detalles">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="action-btn" onclick="editRecluta(${recluta.id})" title="Editar">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="action-btn" onclick="confirmDeleteRecluta(${recluta.id})" title="Eliminar">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            `;
+            reclutasList.appendChild(row);
+        });
+    }
+    
+    // Actualizar paginación
+    updatePagination(reclutasToDisplay ? reclutasToDisplay.length : 0);
+}
+
+// Abrir modal para añadir nuevo recluta
+function openAddReclutaModal() {
+    const modal = document.getElementById('add-recluta-modal');
+    if (!modal) return;
+    
+    modal.style.display = 'block';
+    
+    // Limpiar formulario
+    const nombreInput = document.getElementById('recluta-nombre');
+    const emailInput = document.getElementById('recluta-email');
+    const telefonoInput = document.getElementById('recluta-telefono');
+    const puestoInput = document.getElementById('recluta-puesto');
+    const estadoSelect = document.getElementById('recluta-estado');
+    const notasTextarea = document.getElementById('recluta-notas');
+    const picPreview = document.getElementById('recluta-pic-preview');
+    
+    if (nombreInput) nombreInput.value = '';
+    if (emailInput) emailInput.value = '';
+    if (telefonoInput) telefonoInput.value = '';
+    if (puestoInput) puestoInput.value = '';
+    if (estadoSelect) estadoSelect.value = 'En proceso';
+    if (notasTextarea) notasTextarea.value = '';
+    
+    // Limpiar preview de imagen
+    if (picPreview) picPreview.innerHTML = '<i class="fas fa-user-circle"></i>';
+    reclutaImage = null;
+}
+
+// Cerrar modal de añadir recluta
+function closeAddReclutaModal() {
+    const modal = document.getElementById('add-recluta-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// Añadir nuevo recluta
+function addRecluta() {
+    const nombreInput = document.getElementById('recluta-nombre');
+    const emailInput = document.getElementById('recluta-email');
+    const telefonoInput = document.getElementById('recluta-telefono');
+    const puestoInput = document.getElementById('recluta-puesto');
+    const estadoSelect = document.getElementById('recluta-estado');
+    const notasTextarea = document.getElementById('recluta-notas');
+    
+    if (!nombreInput || !emailInput || !telefonoInput) {
+        showNotification('Error al obtener los campos del formulario', 'error');
+        return;
+    }
+    
+    const nombre = nombreInput.value;
+    const email = emailInput.value;
+    const telefono = telefonoInput.value;
+    const puesto = puestoInput ? puestoInput.value : '';
+    const estado = estadoSelect ? estadoSelect.value : 'En proceso';
+    const notas = notasTextarea ? notasTextarea.value : '';
+    
+    if (!nombre || !email || !telefono) {
+        showNotification('Por favor, completa los campos obligatorios', 'error');
+        return;
+    }
+    
+    // Mostrar estado de carga
+    const saveButton = document.querySelector('#add-recluta-modal .btn-primary');
+    if (saveButton) {
+        saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        saveButton.disabled = true;
+    }
+    
+    // Crear FormData si hay imagen, o usar JSON si no hay
+    let requestOptions;
+    if (reclutaImage) {
+        const formData = new FormData();
+        formData.append('nombre', nombre);
+        formData.append('email', email);
+        formData.append('telefono', telefono);
+        formData.append('puesto', puesto);
+        formData.append('estado', estado);
+        formData.append('notas', notas);
+        formData.append('foto', reclutaImage);
+        
+        requestOptions = {
+            method: 'POST',
+            body: formData
+        };
+    } else {
+        requestOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nombre, email, telefono, puesto, estado, notas
+            })
+        };
+    }
+    
+    // Enviar petición al backend
+    fetch('/api/reclutas', requestOptions)
+        .then(response => {
+            if (!response.ok) throw new Error('Error al crear recluta');
+            return response.json();
+        })
+        .then(data => {
+            // Añadir a la lista local
+            reclutas.push(data);
+            
+            // Cerrar modal
+            closeAddReclutaModal();
+            
+            // Refrescar lista
+            displayReclutas(reclutas);
+            
+            // Mostrar notificación
+            showNotification('Recluta añadido correctamente', 'success');
+            
+            // Recargar estadísticas
+            loadEstadisticas();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al añadir recluta: ' + error.message, 'error');
+        })
+        .finally(() => {
+            // Restaurar botón
+            if (saveButton) {
+                saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
+                saveButton.disabled = false;
+            }
+        });
+}
+
+// Ver detalles de un recluta
+function viewRecluta(id) {
+    fetch(`/api/reclutas/${id}`)
+        .then(response => {
+            if (!response.ok) throw new Error('Recluta no encontrado');
+            return response.json();
+        })
+        .then(recluta => {
+            currentReclutaId = id;
+            
+            // Rellenar los datos en el modal
+            const detailsElements = {
+                nombre: document.getElementById('detail-recluta-nombre'),
+                puesto: document.getElementById('detail-recluta-puesto'),
+                email: document.getElementById('detail-recluta-email'),
+                telefono: document.getElementById('detail-recluta-telefono'),
+                fecha: document.getElementById('detail-recluta-fecha'),
+                notas: document.getElementById('detail-recluta-notas'),
+                pic: document.getElementById('detail-recluta-pic'),
+                estado: document.getElementById('detail-recluta-estado'),
+                viewButtons: document.getElementById('view-mode-buttons'),
+                editForm: document.getElementById('edit-mode-form'),
+                modal: document.getElementById('view-recluta-modal')
+            };
+            
+            if (!detailsElements.modal) {
+                showNotification('Error al mostrar detalles: Modal no encontrado', 'error');
+                return;
+            }
+            
+            // Determinar la URL de la foto
+            const fotoUrl = recluta.foto_url ? 
+                (recluta.foto_url.startsWith('http') ? 
+                    recluta.foto_url : 
+                    (recluta.foto_url === 'default_profile.jpg' ? 
+                        "/api/placeholder/100/100" : 
+                        `/${recluta.foto_url}`)) : 
+                "/api/placeholder/100/100";
+            
+            // Rellenar los datos disponibles
+            if (detailsElements.nombre) detailsElements.nombre.textContent = recluta.nombre;
+            if (detailsElements.puesto) detailsElements.puesto.textContent = recluta.puesto || 'No especificado';
+            if (detailsElements.email) detailsElements.email.textContent = recluta.email;
+            if (detailsElements.telefono) detailsElements.telefono.textContent = recluta.telefono;
+            if (detailsElements.fecha) detailsElements.fecha.textContent = formatDate(recluta.fecha_registro);
+            if (detailsElements.notas) detailsElements.notas.textContent = recluta.notas || 'Sin notas';
+            if (detailsElements.pic) detailsElements.pic.src = fotoUrl;
+            
+            // Actualizar estado
+            if (detailsElements.estado) {
+                detailsElements.estado.textContent = recluta.estado;
+                detailsElements.estado.className = `badge badge-${recluta.estado === 'Activo' ? 'success' : (recluta.estado === 'Rechazado' ? 'danger' : 'warning')}`;
+            }
+            
+            // Mostrar la vista y ocultar la edición
+            if (detailsElements.viewButtons) detailsElements.viewButtons.style.display = 'flex';
+            if (detailsElements.editForm) detailsElements.editForm.style.display = 'none';
+            
+            // Mostrar el modal
+            detailsElements.modal.style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al cargar detalles: ' + error.message, 'error');
+        });
+}
+
+// Editar un recluta directamente (para botón en la tabla)
+function editRecluta(id) {
+    viewRecluta(id);
+    setTimeout(() => {
+        enableEditMode();
+    }, 300);
+}
+
+// Pasar al modo de edición
+function enableEditMode() {
+    if (!currentReclutaId) return;
+    
+    fetch(`/api/reclutas/${currentReclutaId}`)
+        .then(response => {
+            if (!response.ok) throw new Error('Recluta no encontrado');
+            return response.json();
+        })
+        .then(recluta => {
+            // Elementos del formulario
+            const formElements = {
+                nombre: document.getElementById('edit-recluta-nombre'),
+                email: document.getElementById('edit-recluta-email'),
+                telefono: document.getElementById('edit-recluta-telefono'),
+                puesto: document.getElementById('edit-recluta-puesto'),
+                estado: document.getElementById('edit-recluta-estado'),
+                notas: document.getElementById('edit-recluta-notas'),
+                viewButtons: document.getElementById('view-mode-buttons'),
+                editForm: document.getElementById('edit-mode-form')
+            };
+            
+            // Verificar si los elementos existen
+            if (!formElements.nombre || !formElements.email || !formElements.telefono || 
+                !formElements.viewButtons || !formElements.editForm) {
+                showNotification('Error al cargar el formulario de edición', 'error');
+                return;
+            }
+            
+            // Rellenar formulario con datos actuales
+            formElements.nombre.value = recluta.nombre;
+            formElements.email.value = recluta.email;
+            formElements.telefono.value = recluta.telefono;
+            if (formElements.puesto) formElements.puesto.value = recluta.puesto || '';
+            if (formElements.estado) formElements.estado.value = recluta.estado;
+            if (formElements.notas) formElements.notas.value = recluta.notas || '';
+            
+            // Ocultar vista y mostrar edición
+            formElements.viewButtons.style.display = 'none';
+            formElements.editForm.style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al cargar datos para edición: ' + error.message, 'error');
+        });
+}
+
+// Cancelar la edición
+function cancelEdit() {
+    const viewButtons = document.getElementById('view-mode-buttons');
+    const editForm = document.getElementById('edit-mode-form');
+    
+    if (viewButtons) viewButtons.style.display = 'flex';
+    if (editForm) editForm.style.display = 'none';
+}
+
+// Guardar cambios en el recluta
+function saveReclutaChanges() {
+    if (!currentReclutaId) {
+        showNotification('Error: No hay datos para guardar', 'error');
+        return;
+    }
+    
+    // Obtener elementos del formulario
+    const formElements = {
+        nombre: document.getElementById('edit-recluta-nombre'),
+        email: document.getElementById('edit-recluta-email'),
+        telefono: document.getElementById('edit-recluta-telefono'),
+        puesto: document.getElementById('edit-recluta-puesto'),
+        estado: document.getElementById('edit-recluta-estado'),
+        notas: document.getElementById('edit-recluta-notas'),
+        saveButton: document.querySelector('.edit-mode-buttons .btn-primary')
     };
     
-    // Actualizar los elementos que existan
-    if (detailsElements.nombre) detailsElements.nombre.textContent = recluta.nombre;
-    if (detailsElements.puesto) detailsElements.puesto.textContent = recluta.puesto || 'No especificado';
-    if (detailsElements.email) detailsElements.email.textContent = recluta.email;
-    if (detailsElements.telefono) detailsElements.telefono.textContent = recluta.telefono;
-    if (detailsElements.notas) detailsElements.notas.textContent = recluta.notas || 'Sin notas';
-    
-    // Actualizar estado
-    if (detailsElements.estado) {
-        detailsElements.estado.textContent = recluta.estado;
-        detailsElements.estado.className = `badge badge-${recluta.estado === 'Activo' ? 'success' : (recluta.estado === 'Rechazado' ? 'danger' : 'warning')}`;
+    // Verificar si los elementos obligatorios existen
+    if (!formElements.nombre || !formElements.email || !formElements.telefono) {
+        showNotification('Error al obtener datos del formulario', 'error');
+        return;
     }
+    
+    // Obtener valores del formulario
+    const nombre = formElements.nombre.value;
+    const email = formElements.email.value;
+    const telefono = formElements.telefono.value;
+    const puesto = formElements.puesto ? formElements.puesto.value : '';
+    const estado = formElements.estado ? formElements.estado.value : 'En proceso';
+    const notas = formElements.notas ? formElements.notas.value : '';
+    
+    if (!nombre || !email || !telefono) {
+        showNotification('Por favor, completa los campos obligatorios', 'error');
+        return;
+    }
+    
+    // Mostrar estado de carga si el botón existe
+    if (formElements.saveButton) {
+        formElements.saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        formElements.saveButton.disabled = true;
+    }
+    
+    // Crear datos para enviar
+    const requestData = {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            nombre, email, telefono, puesto, estado, notas
+        })
+    };
+    
+    // Enviar petición al backend
+    fetch(`/api/reclutas/${currentReclutaId}`, requestData)
+        .then(response => {
+            if (!response.ok) throw new Error('Error al actualizar recluta');
+            return response.json();
+        })
+        .then(reclutaActualizado => {
+            // Actualizar en la lista local
+            const index = reclutas.findIndex(r => r.id === currentReclutaId);
+            if (index !== -1) {
+                reclutas[index] = reclutaActualizado;
+            }
+            
+            // Actualizar vista de detalles
+            updateReclutaDetailsView(reclutaActualizado);
+            
+            // Volver a modo vista
+            cancelEdit();
+            
+            // Refrescar lista
+            displayReclutas(reclutas);
+            
+            // Recargar estadísticas si cambió el estado
+            loadEstadisticas();
+            
+            // Mostrar notificación
+            showNotification('Recluta actualizado correctamente', 'success');
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al actualizar recluta: ' + error.message, 'error');
+        })
+        .finally(() => {
+            // Restaurar botón
+            if (formElements.saveButton) {
+                formElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+                formElements.saveButton.disabled = false;
+            }
+        });
 }
 
 // Confirmar eliminación de recluta
@@ -30,18 +766,35 @@ function confirmDeleteRecluta(id) {
     // Si no se pasa ID, usar el actual del modal
     const reclutaId = id || currentReclutaId;
     
-    if (!reclutas) {
-        showNotification('No hay reclutas cargados', 'error');
+    if (!reclutaId) {
+        showNotification('No se puede identificar el recluta a eliminar', 'error');
         return;
     }
     
+    // Buscar el recluta (podría estar en la memoria o necesitar una petición)
     const recluta = reclutas.find(r => r.id === reclutaId);
     
     if (!recluta) {
-        showNotification('Recluta no encontrado', 'error');
-        return;
+        // Si no está en memoria, intentar obtenerlo
+        fetch(`/api/reclutas/${reclutaId}`)
+            .then(response => {
+                if (!response.ok) throw new Error('Recluta no encontrado');
+                return response.json();
+            })
+            .then(recluta => {
+                showDeleteConfirmation(recluta);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error al preparar eliminación: ' + error.message, 'error');
+            });
+    } else {
+        showDeleteConfirmation(recluta);
     }
-    
+}
+
+// Mostrar confirmación para eliminar
+function showDeleteConfirmation(recluta) {
     // Elementos del modal de confirmación
     const confirmElements = {
         title: document.getElementById('confirm-title'),
@@ -52,7 +805,7 @@ function confirmDeleteRecluta(id) {
     
     if (!confirmElements.modal) {
         // Si no hay modal, eliminar directamente
-        deleteRecluta(reclutaId);
+        deleteRecluta(recluta.id);
         return;
     }
     
@@ -66,7 +819,7 @@ function confirmDeleteRecluta(id) {
         confirmElements.button.innerHTML = '<i class="fas fa-trash-alt"></i> Eliminar';
         confirmElements.button.className = 'btn-danger';
         confirmElements.button.onclick = function() {
-            deleteRecluta(reclutaId);
+            deleteRecluta(recluta.id);
             closeConfirmModal();
         };
     }
@@ -77,30 +830,41 @@ function confirmDeleteRecluta(id) {
 
 // Eliminar recluta
 function deleteRecluta(id) {
-    if (!reclutas || reclutas.length === 0) {
-        showNotification('No hay reclutas para eliminar', 'error');
+    if (!id) {
+        showNotification('ID de recluta no válido', 'error');
         return;
     }
     
-    const index = reclutas.findIndex(r => r.id === id);
-    if (index === -1) {
-        showNotification('Recluta no encontrado', 'error');
-        return;
-    }
-    
-    // Eliminar de la lista
-    reclutas.splice(index, 1);
-    
-    // Refrescar lista
-    displayReclutas(reclutas);
-    
-    // Cerrar modal de detalles si está abierto
-    if (currentReclutaId === id) {
-        closeViewReclutaModal();
-    }
-    
-    // Mostrar notificación
-    showNotification('Recluta eliminado correctamente', 'success');
+    fetch(`/api/reclutas/${id}`, { method: 'DELETE' })
+        .then(response => {
+            if (!response.ok) throw new Error('Error al eliminar recluta');
+            return response.json();
+        })
+        .then(() => {
+            // Eliminar de la lista local
+            const index = reclutas.findIndex(r => r.id === id);
+            if (index !== -1) {
+                reclutas.splice(index, 1);
+            }
+            
+            // Refrescar lista
+            displayReclutas(reclutas);
+            
+            // Cerrar modal de detalles si está abierto
+            if (currentReclutaId === id) {
+                closeViewReclutaModal();
+            }
+            
+            // Recargar estadísticas
+            loadEstadisticas();
+            
+            // Mostrar notificación
+            showNotification('Recluta eliminado correctamente', 'success');
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al eliminar recluta: ' + error.message, 'error');
+        });
 }
 
 // Cerrar modal de ver recluta
@@ -116,98 +880,9 @@ function closeConfirmModal() {
     if (modal) modal.style.display = 'none';
 }
 
-// Filtrar reclutas por búsqueda y estado
-function filterReclutas() {
-    if (!reclutas) return;
-    
-    const searchInput = document.getElementById('search-reclutas');
-    const filterEstado = document.getElementById('filter-estado');
-    
-    if (!searchInput && !filterEstado) return;
-    
-    const searchText = searchInput ? searchInput.value.toLowerCase() : '';
-    const estadoFilter = filterEstado ? filterEstado.value : 'todos';
-    
-    let filteredReclutas = reclutas.filter(recluta => {
-        // Filtrar por texto de búsqueda
-        const matchesSearch = !searchText || 
-            recluta.nombre.toLowerCase().includes(searchText) ||
-            recluta.email.toLowerCase().includes(searchText) ||
-            recluta.telefono.toLowerCase().includes(searchText) ||
-            (recluta.puesto && recluta.puesto.toLowerCase().includes(searchText));
-        
-        // Filtrar por estado
-        const matchesEstado = estadoFilter === 'todos' || recluta.estado === estadoFilter;
-        
-        return matchesSearch && matchesEstado;
-    });
-    
-    // Aplicar ordenamiento actual
-    const sortSelect = document.getElementById('sort-by');
-    if (sortSelect) {
-        sortReclutas(filteredReclutas, sortSelect.value);
-    } else {
-        displayReclutas(filteredReclutas);
-    }
-}
-
-// Ordenar reclutas
-function sortReclutas(filteredList, sortOption) {
-    // Si no hay reclutas, no hacer nada
-    if (!reclutas || reclutas.length === 0) return;
-    
-    // Si se llama desde un evento, obtener valor del select
-    let sortBy = sortOption;
-    if (!sortOption) {
-        const sortSelect = document.getElementById('sort-by');
-        if (sortSelect) sortBy = sortSelect.value;
-        else sortBy = 'nombre-asc'; // Valor por defecto
-    }
-    
-    // Lista a ordenar (filtrada o completa)
-    let listToSort = filteredList || [...reclutas];
-    
-    // Ordenar según opción
-    switch (sortBy) {
-        case 'nombre-asc':
-            listToSort.sort((a, b) => a.nombre.localeCompare(b.nombre));
-            break;
-        case 'nombre-desc':
-            listToSort.sort((a, b) => b.nombre.localeCompare(a.nombre));
-            break;
-        case 'fecha-asc':
-            listToSort.sort((a, b) => new Date(a.fecha_registro) - new Date(b.fecha_registro));
-            break;
-        case 'fecha-desc':
-            listToSort.sort((a, b) => new Date(b.fecha_registro) - new Date(a.fecha_registro));
-            break;
-    }
-    
-    // Mostrar lista ordenada
-    displayReclutas(listToSort);
-}
-
-// Actualizar paginación
-function updatePagination(totalItems) {
-    const paginationElements = {
-        prevBtn: document.getElementById('prev-page'),
-        nextBtn: document.getElementById('next-page'),
-        totalPages: document.getElementById('total-pages')
-    };
-    
-    if (!paginationElements.totalPages) return;
-    
-    const totalPages = Math.ceil(totalItems / 10) || 1;
-    paginationElements.totalPages.textContent = totalPages;
-    
-    // Habilitar/deshabilitar botones si existen
-    if (paginationElements.prevBtn) paginationElements.prevBtn.disabled = true;
-    if (paginationElements.nextBtn) paginationElements.nextBtn.disabled = (totalPages <= 1);
-}
-
 // Programar entrevista
 function programarEntrevista() {
-    if (!reclutas || !currentReclutaId) {
+    if (!currentReclutaId) {
         showNotification('Error: No se puede programar entrevista', 'error');
         return;
     }
@@ -233,8 +908,17 @@ function programarEntrevista() {
         return;
     }
     
+    // Determinar la URL de la foto
+    const fotoUrl = recluta.foto_url ? 
+        (recluta.foto_url.startsWith('http') ? 
+            recluta.foto_url : 
+            (recluta.foto_url === 'default_profile.jpg' ? 
+                "/api/placeholder/40/40" : 
+                `/${recluta.foto_url}`)) : 
+        "/api/placeholder/40/40";
+    
     // Configurar datos del candidato en el modal
-    if (interviewElements.candidatePic) interviewElements.candidatePic.src = recluta.foto_url;
+    if (interviewElements.candidatePic) interviewElements.candidatePic.src = fotoUrl;
     if (interviewElements.candidateName) interviewElements.candidateName.textContent = recluta.nombre;
     if (interviewElements.candidatePuesto) interviewElements.candidatePuesto.textContent = recluta.puesto || 'No especificado';
     
@@ -263,6 +947,10 @@ function saveInterview() {
     const interviewElements = {
         dateInput: document.getElementById('interview-date'),
         timeInput: document.getElementById('interview-time'),
+        duracionSelect: document.getElementById('interview-duration'),
+        tipoSelect: document.getElementById('interview-type'),
+        ubicacionInput: document.getElementById('interview-location'),
+        notasInput: document.getElementById('interview-notes'),
         saveButton: document.querySelector('#schedule-interview-modal .btn-primary')
     };
     
@@ -271,10 +959,15 @@ function saveInterview() {
         return;
     }
     
-    const date = interviewElements.dateInput.value;
-    const time = interviewElements.timeInput.value;
+    if (!currentReclutaId) {
+        showNotification('No se puede identificar el recluta', 'error');
+        return;
+    }
     
-    if (!date || !time) {
+    const fecha = interviewElements.dateInput.value;
+    const hora = interviewElements.timeInput.value;
+    
+    if (!fecha || !hora) {
         showNotification('Por favor, completa los campos de fecha y hora', 'error');
         return;
     }
@@ -285,31 +978,48 @@ function saveInterview() {
         interviewElements.saveButton.disabled = true;
     }
     
-    try {
-        // Simular tiempo de guardado
-        setTimeout(() => {
-            // En una implementación real, guardaríamos la entrevista
-            
-            // Cerrar modal
-            closeScheduleModal();
-            
-            // Mostrar notificación
-            showNotification('Entrevista programada correctamente', 'success');
-            
-            // Restaurar botón
-            if (interviewElements.saveButton) {
-                interviewElements.saveButton.innerHTML = '<i class="fas fa-calendar-check"></i> Programar';
-                interviewElements.saveButton.disabled = false;
-            }
-        }, 800);
-    } catch (error) {
-        showNotification('Error al programar la entrevista: ' + (error.message || 'Error desconocido'), 'error');
+    // Preparar datos para enviar
+    const entrevistaData = {
+        recluta_id: currentReclutaId,
+        fecha: fecha,
+        hora: hora,
+        duracion: interviewElements.duracionSelect ? interviewElements.duracionSelect.value : 60,
+        tipo: interviewElements.tipoSelect ? interviewElements.tipoSelect.value : 'presencial',
+        ubicacion: interviewElements.ubicacionInput ? interviewElements.ubicacionInput.value : '',
+        notas: interviewElements.notasInput ? interviewElements.notasInput.value : ''
+    };
+    
+    // Enviar petición al backend
+    fetch('/api/entrevistas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entrevistaData)
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Error al guardar entrevista');
+        return response.json();
+    })
+    .then(data => {
+        // Cerrar modal
+        closeScheduleModal();
         
+        // Mostrar notificación
+        showNotification('Entrevista programada correctamente', 'success');
+        
+        // Recargar estadísticas
+        loadEstadisticas();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al programar la entrevista: ' + error.message, 'error');
+    })
+    .finally(() => {
+        // Restaurar botón
         if (interviewElements.saveButton) {
             interviewElements.saveButton.innerHTML = '<i class="fas fa-calendar-check"></i> Programar';
             interviewElements.saveButton.disabled = false;
         }
-    }
+    });
 }
 
 // Cambiar contraseña
@@ -348,33 +1058,111 @@ function changePassword() {
         passwordElements.button.disabled = true;
     }
     
-    try {
-        // Simular tiempo de procesamiento
-        setTimeout(() => {
-            // En una implementación real, cambiaríamos la contraseña
-            
-            // Limpiar campos
-            passwordElements.currentPassword.value = '';
-            passwordElements.newPassword.value = '';
-            passwordElements.confirmPassword.value = '';
-            
-            // Mostrar notificación
-            showNotification('Contraseña cambiada correctamente', 'success');
-            
-            // Restaurar botón
-            if (passwordElements.button) {
-                passwordElements.button.innerHTML = '<i class="fas fa-key"></i> Cambiar Contraseña';
-                passwordElements.button.disabled = false;
-            }
-        }, 800);
-    } catch (error) {
-        showNotification('Error al cambiar la contraseña: ' + (error.message || 'Error desconocido'), 'error');
+    // Enviar petición al backend
+    fetch('/api/cambiar-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword
+        })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Contraseña actual incorrecta');
+        return response.json();
+    })
+    .then(data => {
+        // Limpiar campos
+        passwordElements.currentPassword.value = '';
+        passwordElements.newPassword.value = '';
+        passwordElements.confirmPassword.value = '';
         
+        // Mostrar notificación
+        showNotification('Contraseña cambiada correctamente', 'success');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al cambiar la contraseña: ' + error.message, 'error');
+    })
+    .finally(() => {
+        // Restaurar botón
         if (passwordElements.button) {
             passwordElements.button.innerHTML = '<i class="fas fa-key"></i> Cambiar Contraseña';
             passwordElements.button.disabled = false;
         }
+    });
+}
+
+// Actualizar datos de perfil
+function updateProfile() {
+    const profileElements = {
+        nombre: document.getElementById('user-name'),
+        telefono: document.getElementById('user-phone'),
+        button: document.querySelector('.config-section button')
+    };
+    
+    if (!profileElements.nombre) {
+        showNotification('Error al obtener campos del formulario', 'error');
+        return;
     }
+    
+    const nombre = profileElements.nombre.value;
+    const telefono = profileElements.telefono ? profileElements.telefono.value : '';
+    
+    // Mostrar estado de carga
+    if (profileElements.button) {
+        profileElements.button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        profileElements.button.disabled = true;
+    }
+    
+    // Determinar si es FormData (con imagen) o JSON
+    let requestOptions;
+    if (profileImage) {
+        const formData = new FormData();
+        formData.append('nombre', nombre);
+        formData.append('telefono', telefono);
+        formData.append('foto', profileImage);
+        
+        requestOptions = {
+            method: 'PUT',
+            body: formData
+        };
+    } else {
+        requestOptions = {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, telefono })
+        };
+    }
+    
+    // Enviar petición al backend
+    fetch('/api/perfil', requestOptions)
+        .then(response => {
+            if (!response.ok) throw new Error('Error al actualizar perfil');
+            return response.json();
+        })
+        .then(data => {
+            // Actualizar datos del usuario actual
+            currentGerente = data.usuario;
+            
+            // Actualizar UI
+            document.getElementById('gerente-name').textContent = currentGerente.nombre || currentGerente.email;
+            document.getElementById('dropdown-user-name').textContent = currentGerente.nombre || currentGerente.email;
+            
+            // Mostrar notificación
+            showNotification('Perfil actualizado correctamente', 'success');
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al actualizar perfil: ' + error.message, 'error');
+        })
+        .finally(() => {
+            // Restaurar botón
+            if (profileElements.button) {
+                profileElements.button.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+                profileElements.button.disabled = false;
+            }
+        });
 }
 
 // Mostrar ayuda
@@ -398,13 +1186,19 @@ function handleProfileImageChange(event) {
         profilePic.src = e.target.result;
         profileImage = file;
         
-        // Actualizar la imagen de perfil en el objeto currentGerente
-        if (currentGerente) {
-            currentGerente.profileUrl = e.target.result;
-        }
-        
         // Mostrar notificación
-        showNotification('Foto de perfil actualizada correctamente', 'success');
+        showNotification('Foto de perfil actualizada. No olvides guardar los cambios.', 'info');
+        
+        // Agregar botón de guardar si no existe
+        const configSection = document.querySelector('.config-section:first-child');
+        if (configSection && !document.getElementById('save-profile-btn')) {
+            const saveButton = document.createElement('button');
+            saveButton.id = 'save-profile-btn';
+            saveButton.className = 'btn-primary';
+            saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+            saveButton.onclick = updateProfile;
+            configSection.appendChild(saveButton);
+        }
     };
     reader.readAsDataURL(file);
 }
@@ -547,6 +1341,142 @@ function changeActiveSection(targetSection) {
     
     const targetElement = document.getElementById(targetSection);
     if (targetElement) targetElement.classList.add('active');
+    
+    // Si es la sección de estadísticas, recargar datos
+    if (targetSection === 'estadisticas-section') {
+        loadEstadisticas();
+    }
+}
+
+// Filtrar reclutas por búsqueda y estado
+function filterReclutas() {
+    if (!reclutas) return;
+    
+    const searchInput = document.getElementById('search-reclutas');
+    const filterEstado = document.getElementById('filter-estado');
+    
+    if (!searchInput && !filterEstado) return;
+    
+    const searchText = searchInput ? searchInput.value.toLowerCase() : '';
+    const estadoFilter = filterEstado ? filterEstado.value : 'todos';
+    
+    let filteredReclutas = reclutas.filter(recluta => {
+        // Filtrar por texto de búsqueda
+        const matchesSearch = !searchText || 
+            recluta.nombre.toLowerCase().includes(searchText) ||
+            recluta.email.toLowerCase().includes(searchText) ||
+            recluta.telefono.toLowerCase().includes(searchText) ||
+            (recluta.puesto && recluta.puesto.toLowerCase().includes(searchText));
+        
+        // Filtrar por estado
+        const matchesEstado = estadoFilter === 'todos' || recluta.estado === estadoFilter;
+        
+        return matchesSearch && matchesEstado;
+    });
+    
+    // Aplicar ordenamiento actual
+    const sortSelect = document.getElementById('sort-by');
+    if (sortSelect) {
+        sortReclutas(filteredReclutas, sortSelect.value);
+    } else {
+        displayReclutas(filteredReclutas);
+    }
+}
+
+// Ordenar reclutas
+function sortReclutas(filteredList, sortOption) {
+    // Si no hay reclutas, no hacer nada
+    if (!reclutas || reclutas.length === 0) return;
+    
+    // Si se llama desde un evento, obtener valor del select
+    let sortBy = sortOption;
+    if (!sortOption) {
+        const sortSelect = document.getElementById('sort-by');
+        if (sortSelect) sortBy = sortSelect.value;
+        else sortBy = 'nombre-asc'; // Valor por defecto
+    }
+    
+    // Lista a ordenar (filtrada o completa)
+    let listToSort = filteredList || [...reclutas];
+    
+    // Ordenar según opción
+    switch (sortBy) {
+        case 'nombre-asc':
+            listToSort.sort((a, b) => a.nombre.localeCompare(b.nombre));
+            break;
+        case 'nombre-desc':
+            listToSort.sort((a, b) => b.nombre.localeCompare(a.nombre));
+            break;
+        case 'fecha-asc':
+            listToSort.sort((a, b) => new Date(a.fecha_registro) - new Date(b.fecha_registro));
+            break;
+        case 'fecha-desc':
+            listToSort.sort((a, b) => new Date(b.fecha_registro) - new Date(a.fecha_registro));
+            break;
+    }
+    
+    // Mostrar lista ordenada
+    displayReclutas(listToSort);
+}
+
+// Actualizar paginación
+function updatePagination(totalItems) {
+    const paginationElements = {
+        prevBtn: document.getElementById('prev-page'),
+        nextBtn: document.getElementById('next-page'),
+        totalPages: document.getElementById('total-pages'),
+        currentPage: document.querySelector('.current-page')
+    };
+    
+    if (!paginationElements.totalPages || !paginationElements.currentPage) return;
+    
+    const totalPages = Math.ceil(totalItems / 10) || 1;
+    paginationElements.totalPages.textContent = totalPages;
+    paginationElements.currentPage.textContent = '1'; // Por ahora siempre en página 1
+    
+    // Habilitar/deshabilitar botones si existen
+    if (paginationElements.prevBtn) paginationElements.prevBtn.disabled = true;
+    if (paginationElements.nextBtn) paginationElements.nextBtn.disabled = (totalPages <= 1);
+}
+
+// Actualizar la vista de detalles del recluta
+function updateReclutaDetailsView(recluta) {
+    if (!recluta) return;
+    
+    const detailsElements = {
+        nombre: document.getElementById('detail-recluta-nombre'),
+        puesto: document.getElementById('detail-recluta-puesto'),
+        email: document.getElementById('detail-recluta-email'),
+        telefono: document.getElementById('detail-recluta-telefono'),
+        notas: document.getElementById('detail-recluta-notas'),
+        estado: document.getElementById('detail-recluta-estado'),
+        fecha: document.getElementById('detail-recluta-fecha'),
+        pic: document.getElementById('detail-recluta-pic')
+    };
+    
+    // Determinar la URL de la foto
+    const fotoUrl = recluta.foto_url ? 
+        (recluta.foto_url.startsWith('http') ? 
+            recluta.foto_url : 
+            (recluta.foto_url === 'default_profile.jpg' ? 
+                "/api/placeholder/100/100" : 
+                `/${recluta.foto_url}`)) : 
+        "/api/placeholder/100/100";
+    
+    // Actualizar los elementos que existan
+    if (detailsElements.nombre) detailsElements.nombre.textContent = recluta.nombre;
+    if (detailsElements.puesto) detailsElements.puesto.textContent = recluta.puesto || 'No especificado';
+    if (detailsElements.email) detailsElements.email.textContent = recluta.email;
+    if (detailsElements.telefono) detailsElements.telefono.textContent = recluta.telefono;
+    if (detailsElements.notas) detailsElements.notas.textContent = recluta.notas || 'Sin notas';
+    if (detailsElements.fecha) detailsElements.fecha.textContent = formatDate(recluta.fecha_registro);
+    if (detailsElements.pic) detailsElements.pic.src = fotoUrl;
+    
+    // Actualizar estado
+    if (detailsElements.estado) {
+        detailsElements.estado.textContent = recluta.estado;
+        detailsElements.estado.className = `badge badge-${recluta.estado === 'Activo' ? 'success' : (recluta.estado === 'Rechazado' ? 'danger' : 'warning')}`;
+    }
 }
 
 // Inicializar calendario
@@ -566,6 +1496,97 @@ function initCalendar() {
     
     // Generar días del calendario
     generateCalendarDays(currentYear, currentMonth);
+    
+    // Cargar entrevistas para el mes actual
+    loadEntrevistas(currentYear, currentMonth);
+}
+
+// Cargar entrevistas del mes
+function loadEntrevistas(year, month) {
+    fetch('/api/entrevistas')
+        .then(response => {
+            if (!response.ok) throw new Error('Error al cargar entrevistas');
+            return response.json();
+        })
+        .then(entrevistas => {
+            // Filtrar entrevistas para el mes actual
+            const entrevistasMes = entrevistas.filter(entrevista => {
+                const fecha = new Date(entrevista.fecha);
+                return fecha.getFullYear() === year && fecha.getMonth() === month;
+            });
+            
+            // Mostrar entrevistas en el calendario
+            entrevistasMes.forEach(entrevista => {
+                const fecha = new Date(entrevista.fecha);
+                const dia = fecha.getDate();
+                
+                // Buscar la celda correspondiente
+                const dayCells = document.querySelectorAll('.calendar-day:not(.other-month)');
+                dayCells.forEach(cell => {
+                    const dayNumber = cell.querySelector('.calendar-day-number');
+                    if (dayNumber && parseInt(dayNumber.textContent) === dia) {
+                        // Añadir evento al día
+                        const eventDiv = document.createElement('div');
+                        eventDiv.className = 'calendar-event';
+                        eventDiv.textContent = `Entrevista: ${entrevista.recluta_nombre}`;
+                        cell.appendChild(eventDiv);
+                    }
+                });
+            });
+            
+            // Mostrar próximas entrevistas en sidebar
+            const upcomingEvents = document.querySelector('.upcoming-events');
+            if (upcomingEvents && entrevistas.length > 0) {
+                // Limpiar eventos existentes
+                const eventsContainer = upcomingEvents.querySelector('h5');
+                if (eventsContainer) {
+                    let nextSibling = eventsContainer.nextElementSibling;
+                    while (nextSibling) {
+                        const toRemove = nextSibling;
+                        nextSibling = nextSibling.nextElementSibling;
+                        upcomingEvents.removeChild(toRemove);
+                    }
+                }
+                
+                // Ordenar entrevistas por fecha
+                entrevistas.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+                
+                // Mostrar máximo 3 entrevistas
+                const now = new Date();
+                const proximasEntrevistas = entrevistas
+                    .filter(e => new Date(e.fecha) >= now)
+                    .slice(0, 3);
+                
+                proximasEntrevistas.forEach(entrevista => {
+                    const fecha = new Date(entrevista.fecha);
+                    const eventItem = document.createElement('div');
+                    eventItem.className = 'event-item';
+                    eventItem.innerHTML = `
+                        <div class="event-date">
+                            <span class="event-day">${fecha.getDate()}</span>
+                            <span class="event-month">${getMonthShortName(fecha.getMonth())}</span>
+                        </div>
+                        <div class="event-details">
+                            <h6>Entrevista con ${entrevista.recluta_nombre}</h6>
+                            <p><i class="fas fa-clock"></i> ${entrevista.hora}</p>
+                        </div>
+                    `;
+                    upcomingEvents.appendChild(eventItem);
+                });
+                
+                // Si no hay entrevistas futuras, mostrar mensaje
+                if (proximasEntrevistas.length === 0) {
+                    const noEvents = document.createElement('p');
+                    noEvents.style.textAlign = 'center';
+                    noEvents.style.margin = '20px 0';
+                    noEvents.textContent = 'No hay entrevistas programadas';
+                    upcomingEvents.appendChild(noEvents);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
 }
 
 // Generar días del calendario
@@ -604,23 +1625,11 @@ function generateCalendarDays(year, month) {
         }
         
         dayDiv.innerHTML = `<div class="calendar-day-number">${i}</div>`;
-        
-        // Añadir eventos de ejemplo para el calendario
-        if (i === 5) {
-            dayDiv.innerHTML += `<div class="calendar-event">Entrevista: Ana García</div>`;
-        }
-        if (i === 8) {
-            dayDiv.innerHTML += `<div class="calendar-event">Entrevista: Carlos López</div>`;
-        }
-        if (i === 15) {
-            dayDiv.innerHTML += `<div class="calendar-event">Reunión de equipo</div>`;
-        }
-        
         calendarGrid.appendChild(dayDiv);
     }
     
     // Calcular casillas restantes para completar la cuadrícula
-    const totalCells = 42;
+    const totalCells = 42; // 6 filas de 7 días
     const remainingCells = totalCells - (startDayOfWeek + lastDay.getDate());
     
     // Días del mes siguiente
@@ -670,11 +1679,19 @@ function navigateCalendar(direction) {
     
     // Regenerar días
     generateCalendarDays(currentYear, currentMonth);
+    
+    // Cargar entrevistas para el nuevo mes
+    loadEntrevistas(currentYear, currentMonth);
 }
 
 // Helpers para calendario
 function getMonthName(monthIndex) {
     const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return months[monthIndex] || '';
+}
+
+function getMonthShortName(monthIndex) {
+    const months = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
     return months[monthIndex] || '';
 }
 
@@ -737,54 +1754,6 @@ function checkSavedTheme() {
     }
 }
 
-// Toggle modo oscuro
-function toggleDarkMode(value) {
-    try {
-        // Si se proporciona un valor, usar ese; si no, alternar
-        darkMode = value !== undefined ? value : !darkMode;
-        
-        const body = document.body;
-        const darkModeToggle = document.getElementById('dark-mode-toggle');
-        
-        if (darkMode) {
-            if (body) body.classList.add('dark-mode');
-            if (darkModeToggle) darkModeToggle.innerHTML = '<i class="fas fa-sun"></i>';
-        } else {
-            if (body) body.classList.remove('dark-mode');
-            if (darkModeToggle) darkModeToggle.innerHTML = '<i class="fas fa-moon"></i>';
-        }
-        
-        // Guardar preferencia
-        localStorage.setItem('darkMode', darkMode);
-        
-        // Actualizar switch en configuración si existe
-        const darkThemeToggle = document.getElementById('dark-theme-toggle');
-        if (darkThemeToggle) {
-            darkThemeToggle.checked = darkMode;
-        }
-    } catch (error) {
-        console.error('Error al cambiar modo oscuro:', error);
-    }
-}
-
-// Cambiar color primario
-function changePrimaryColor(color) {
-    try {
-        if (!color) return;
-        
-        document.documentElement.style.setProperty('--primary-color', color);
-        
-        // Ajustar color oscuro basado en el primario
-        const darkenedColor = darkenColor(color, 20);
-        document.documentElement.style.setProperty('--primary-dark', darkenedColor);
-        
-        // Guardar preferencia
-        localStorage.setItem('primaryColor', color);
-    } catch (error) {
-        console.error('Error al cambiar color primario:', error);
-    }
-}
-
 // Oscurecer color (para generar variante dark)
 function darkenColor(hex, percent) {
     try {
@@ -808,790 +1777,4 @@ function darkenColor(hex, percent) {
         console.error('Error al oscurecer color:', error);
         return '#0056b3'; // Valor por defecto si hay error
     }
-}// Inicialización de variables globales
-let currentGerente = null;
-let profileImage = null;
-let reclutaImage = null;
-let currentReclutaId = null;
-let reclutas = [];
-let darkMode = false;
-
-// Evento para cuando se carga completamente el documento
-document.addEventListener('DOMContentLoaded', function() {
-    // Inicializar listeners de eventos para la interfaz
-    initEventListeners();
-    
-    // Comprobar si hay un tema guardado
-    checkSavedTheme();
-    
-    // Inicializar calendario si estamos en esa sección
-    initCalendar();
-});
-
-// Inicialización de todos los event listeners
-function initEventListeners() {
-    // Listeners de navegación del dashboard
-    const navLinks = document.querySelectorAll('.dashboard-nav a');
-    if (navLinks && navLinks.length > 0) {
-        navLinks.forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetSection = this.getAttribute('data-section');
-                changeActiveSection(targetSection);
-            });
-        });
-    }
-    
-    // Toggle modo oscuro
-    const darkModeToggle = document.getElementById('dark-mode-toggle');
-    if (darkModeToggle) {
-        darkModeToggle.addEventListener('click', toggleDarkMode);
-    }
-    
-    // Toggle de tema en configuración
-    const darkThemeToggle = document.getElementById('dark-theme-toggle');
-    if (darkThemeToggle) {
-        darkThemeToggle.addEventListener('click', function() {
-            toggleDarkMode();
-        });
-    }
-    
-    // Cambio de color primario
-    const colorOptions = document.querySelectorAll('input[name="primary-color"]');
-    if (colorOptions && colorOptions.length > 0) {
-        colorOptions.forEach(option => {
-            option.addEventListener('change', function() {
-                changePrimaryColor(this.value);
-                document.querySelectorAll('.color-option').forEach(opt => {
-                    opt.classList.remove('selected');
-                });
-                this.parentElement.classList.add('selected');
-            });
-        });
-    }
-    
-    // Color de fondo
-    const pageColorPicker = document.getElementById('page-color');
-    if (pageColorPicker) {
-        pageColorPicker.addEventListener('change', function() {
-            document.body.style.backgroundColor = this.value;
-        });
-    }
-    
-    // Manejo de la foto de perfil
-    const profileUploadInput = document.getElementById('profile-upload');
-    if (profileUploadInput) {
-        profileUploadInput.addEventListener('change', handleProfileImageChange);
-    }
-    
-    // Manejo de la foto del recluta
-    const reclutaUploadInput = document.getElementById('recluta-upload');
-    if (reclutaUploadInput) {
-        reclutaUploadInput.addEventListener('change', handleReclutaImageChange);
-    }
-    
-    // Botón de ayuda
-    const helpButton = document.getElementById('help-button');
-    if (helpButton) {
-        helpButton.addEventListener('click', showHelp);
-    }
-    
-    // Dropdown de perfil
-    const profileDropdownButton = document.getElementById('profile-dropdown-button');
-    if (profileDropdownButton) {
-        profileDropdownButton.addEventListener('click', toggleProfileDropdown);
-    }
-    
-    // Toggle visibilidad de contraseña
-    const togglePasswordButton = document.getElementById('toggle-password');
-    if (togglePasswordButton) {
-        togglePasswordButton.addEventListener('click', togglePasswordVisibility);
-    }
-    
-    // Cerrar notificaciones
-    const notificationCloseButton = document.getElementById('notification-close');
-    if (notificationCloseButton) {
-        notificationCloseButton.addEventListener('click', hideNotification);
-    }
-    
-    // Búsqueda de reclutas
-    const searchInput = document.getElementById('search-reclutas');
-    if (searchInput) {
-        searchInput.addEventListener('input', filterReclutas);
-    }
-    
-    // Filtro de estado
-    const filterEstado = document.getElementById('filter-estado');
-    if (filterEstado) {
-        filterEstado.addEventListener('change', filterReclutas);
-    }
-    
-    // Ordenar reclutas
-    const sortBy = document.getElementById('sort-by');
-    if (sortBy) {
-        sortBy.addEventListener('change', function() {
-            sortReclutas(null, this.value);
-        });
-    }
-    
-    // Botón de cambio de contraseña
-    const changePasswordBtn = document.getElementById('change-password-btn');
-    if (changePasswordBtn) {
-        changePasswordBtn.addEventListener('click', changePassword);
-    }
-    
-    // Cerrar dropdowns y modales al hacer clic fuera
-    window.addEventListener('click', function(event) {
-        closeMenusOnClickOutside(event);
-    });
-    
-    // Navegación de calendario
-    const prevMonthBtn = document.getElementById('prev-month');
-    const nextMonthBtn = document.getElementById('next-month');
-    if (prevMonthBtn && nextMonthBtn) {
-        prevMonthBtn.addEventListener('click', () => navigateCalendar(-1));
-        nextMonthBtn.addEventListener('click', () => navigateCalendar(1));
-    }
-    
-    // Botón para añadir evento en calendario
-    const addEventButton = document.getElementById('add-event-button');
-    if (addEventButton) {
-        addEventButton.addEventListener('click', () => {
-            // Mostrar modal para añadir evento
-            showNotification('Esta función estará disponible próximamente', 'warning');
-        });
-    }
-
-    // Rellenar el campo de email del usuario en configuración
-    const userEmailField = document.getElementById('user-email');
-    if (userEmailField && currentGerente) {
-        userEmailField.value = currentGerente.email || '';
-    }
-    
-    // Botón de login
-    const loginButton = document.getElementById('login-button');
-    if (loginButton) {
-        loginButton.addEventListener('click', login);
-    }
-}
-
-// Funcionalidad de login mejorada
-function login() {
-    const email = document.getElementById('email')?.value;
-    const password = document.getElementById('password')?.value;
-
-    if (!email || !password) {
-        showNotification('Completa los campos de usuario y contraseña', 'warning');
-        return;
-    }
-
-    const loginButton = document.getElementById('login-button');
-    if (loginButton) {
-        loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
-        loginButton.disabled = true;
-    }
-
-    // Para pruebas (si la API no está funcionando):
-    if (email === 'admin@example.com' && password === 'admin') {
-        currentGerente = { email: email, id: 1 };
-        
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('dashboard-section').style.display = 'block';
-        
-        document.getElementById('gerente-name').textContent = email;
-        document.getElementById('dropdown-user-name').textContent = email;
-        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
-        
-        if (document.getElementById('user-name')) 
-            document.getElementById('user-name').value = email;
-        if (document.getElementById('user-email')) 
-            document.getElementById('user-email').value = email;
-        
-        showNotification(`¡Bienvenido ${email}!`, 'success');
-        loadDemoReclutas();
-        
-        // Restablecer botón de login
-        if (loginButton) {
-            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
-            loginButton.disabled = false;
-        }
-        return;
-    }
-
-    fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-    })
-    .then(res => {
-        if (!res.ok) throw new Error("Credenciales inválidas");
-        return res.json();
-    })
-    .then(data => {
-        currentGerente = data.usuario;
-
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('dashboard-section').style.display = 'block';
-
-        document.getElementById('gerente-name').textContent = currentGerente.email;
-        document.getElementById('dropdown-user-name').textContent = currentGerente.email;
-        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
-
-        if (document.getElementById('user-name')) 
-            document.getElementById('user-name').value = currentGerente.email;
-        if (document.getElementById('user-email')) 
-            document.getElementById('user-email').value = currentGerente.email;
-
-        showNotification(`¡Bienvenido ${currentGerente.email}!`, 'success');
-        loadDemoReclutas();
-    })
-    .catch(err => {
-        console.error(err);
-        showNotification('Usuario o contraseña incorrectos', 'error');
-    })
-    .finally(() => {
-        if (loginButton) {
-            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
-            loginButton.disabled = false;
-        }
-    });
-}
-// Cierre de sesión
-function logout() {
-    currentGerente = null;
-    document.getElementById('login-section').style.display = 'block';
-    document.getElementById('dashboard-section').style.display = 'none';
-
-    document.getElementById('login-email').value = '';
-    document.getElementById('login-password').value = '';
-
-    showNotification('Sesión cerrada correctamente', 'success');
-}
-
-// Cargar datos de demostración
-function loadDemoReclutas() {
-    // Datos de demostración para reclutas
-    reclutas = [
-        {
-            id: 1,
-            nombre: 'Ana García',
-            email: 'ana.garcia@ejemplo.com',
-            telefono: '555-1234',
-            estado: 'Activo',
-            foto_url: '/api/placeholder/40/40',
-            fecha_registro: '2025-03-15',
-            puesto: 'Desarrollador Frontend',
-            notas: 'Experiencia de 3 años en React y Angular. Disponible para incorporación inmediata.'
-        },
-        {
-            id: 2,
-            nombre: 'Carlos López',
-            email: 'carlos.lopez@ejemplo.com',
-            telefono: '555-5678',
-            estado: 'En proceso',
-            foto_url: '/api/placeholder/40/40',
-            fecha_registro: '2025-03-20',
-            puesto: 'Diseñador UX/UI',
-            notas: 'Portfolio impresionante. Pendiente segunda entrevista con el equipo de diseño.'
-        },
-        {
-            id: 3,
-            nombre: 'María Rodríguez',
-            email: 'maria.rodriguez@ejemplo.com',
-            telefono: '555-9012',
-            estado: 'Activo',
-            foto_url: '/api/placeholder/40/40',
-            fecha_registro: '2025-03-18',
-            puesto: 'Desarrollador Backend',
-            notas: 'Experiencia con Node.js y bases de datos SQL/NoSQL. Disponible a partir del 15 de mayo.'
-        },
-        {
-            id: 4,
-            nombre: 'Javier Martínez',
-            email: 'javier.martinez@ejemplo.com',
-            telefono: '555-3456',
-            estado: 'En proceso',
-            foto_url: '/api/placeholder/40/40',
-            fecha_registro: '2025-03-25',
-            puesto: 'DevOps Engineer',
-            notas: 'Conocimientos avanzados en AWS y Docker. Pendiente prueba técnica.'
-        }
-    ];
-    
-    // Mostrar reclutas en la tabla
-    displayReclutas(reclutas);
-}
-
-// Mostrar lista de reclutas en la tabla
-function displayReclutas(reclutasToDisplay) {
-    const reclutasList = document.getElementById('reclutas-list');
-    if (!reclutasList) return;
-    
-    reclutasList.innerHTML = '';
-    
-    if (!reclutasToDisplay || reclutasToDisplay.length === 0) {
-        const row = document.createElement('tr');
-        row.innerHTML = `<td colspan="6" style="text-align: center;">No se encontraron reclutas. ¡Agrega tu primer recluta!</td>`;
-        reclutasList.appendChild(row);
-    } else {
-        reclutasToDisplay.forEach(recluta => {
-            const row = document.createElement('tr');
-            const badgeClass = recluta.estado === 'Activo' ? 'badge-success' : 
-                              (recluta.estado === 'Rechazado' ? 'badge-danger' : 'badge-warning');
-            
-            row.innerHTML = `
-                <td><img src="${recluta.foto_url}" alt="${recluta.nombre}" class="recluta-foto"></td>
-                <td>${recluta.nombre}</td>
-                <td>${recluta.email}</td>
-                <td>${recluta.telefono}</td>
-                <td><span class="badge ${badgeClass}">${recluta.estado}</span></td>
-                <td>
-                    <button class="action-btn" onclick="viewRecluta(${recluta.id})" title="Ver detalles">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="action-btn" onclick="editRecluta(${recluta.id})" title="Editar">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="action-btn" onclick="confirmDeleteRecluta(${recluta.id})" title="Eliminar">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </td>
-            `;
-            reclutasList.appendChild(row);
-        });
-    }
-    
-    // Actualizar paginación
-    updatePagination(reclutasToDisplay ? reclutasToDisplay.length : 0);
-}
-
-// Abrir modal para añadir nuevo recluta
-function openAddReclutaModal() {
-    const modal = document.getElementById('add-recluta-modal');
-    if (!modal) return;
-    
-    modal.style.display = 'block';
-    
-    // Limpiar formulario
-    const nombreInput = document.getElementById('recluta-nombre');
-    const emailInput = document.getElementById('recluta-email');
-    const telefonoInput = document.getElementById('recluta-telefono');
-    const puestoInput = document.getElementById('recluta-puesto');
-    const estadoSelect = document.getElementById('recluta-estado');
-    const notasTextarea = document.getElementById('recluta-notas');
-    const picPreview = document.getElementById('recluta-pic-preview');
-    
-    if (nombreInput) nombreInput.value = '';
-    if (emailInput) emailInput.value = '';
-    if (telefonoInput) telefonoInput.value = '';
-    if (puestoInput) puestoInput.value = '';
-    if (estadoSelect) estadoSelect.value = 'En proceso';
-    if (notasTextarea) notasTextarea.value = '';
-    
-    // Limpiar preview de imagen
-    if (picPreview) picPreview.innerHTML = '<i class="fas fa-user-circle"></i>';
-    reclutaImage = null;
-}
-
-// Cerrar modal de añadir recluta
-function closeAddReclutaModal() {
-    const modal = document.getElementById('add-recluta-modal');
-    if (modal) modal.style.display = 'none';
-}
-
-// Añadir nuevo recluta
-function addRecluta() {
-    const nombreInput = document.getElementById('recluta-nombre');
-    const emailInput = document.getElementById('recluta-email');
-    const telefonoInput = document.getElementById('recluta-telefono');
-    const puestoInput = document.getElementById('recluta-puesto');
-    const estadoSelect = document.getElementById('recluta-estado');
-    const notasTextarea = document.getElementById('recluta-notas');
-    
-    if (!nombreInput || !emailInput || !telefonoInput) {
-        showNotification('Error al obtener los campos del formulario', 'error');
-        return;
-    }
-    
-    const nombre = nombreInput.value;
-    const email = emailInput.value;
-    const telefono = telefonoInput.value;
-    const puesto = puestoInput ? puestoInput.value : '';
-    const estado = estadoSelect ? estadoSelect.value : 'En proceso';
-    const notas = notasTextarea ? notasTextarea.value : '';
-    
-    if (!nombre || !email || !telefono) {
-        showNotification('Por favor, completa los campos obligatorios', 'error');
-        return;
-    }
-    
-    // Mostrar estado de carga
-    const saveButton = document.querySelector('#add-recluta-modal .btn-primary');
-    if (!saveButton) {
-        addReclutaFinal(nombre, email, telefono, puesto, estado, notas);
-        return;
-    }
-    
-    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
-    saveButton.disabled = true;
-    
-    try {
-        // Simular tiempo de guardado (1 segundo)
-        setTimeout(() => {
-            // Crear un nuevo ID
-            const nuevoId = reclutas.length > 0 ? Math.max(...reclutas.map(r => r.id)) + 1 : 1;
-            
-            // Crear objeto de nuevo recluta
-            const nuevoRecluta = {
-                id: nuevoId,
-                nombre: nombre,
-                email: email,
-                telefono: telefono,
-                estado: estado,
-                foto_url: reclutaImage ? URL.createObjectURL(reclutaImage) : '/api/placeholder/40/40',
-                fecha_registro: new Date().toISOString().split('T')[0],
-                puesto: puesto,
-                notas: notas
-            };
-            
-            // Añadir a la lista local
-            reclutas.push(nuevoRecluta);
-            
-            // Cerrar modal
-            closeAddReclutaModal();
-            
-            // Refrescar lista
-            displayReclutas(reclutas);
-            
-            // Mostrar notificación
-            showNotification('Recluta añadido correctamente', 'success');
-            
-            // Restaurar botón
-            saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
-            saveButton.disabled = false;
-        }, 1000);
-    } catch (error) {
-        showNotification('Error al añadir recluta: ' + (error.message || 'Error desconocido'), 'error');
-        saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
-        saveButton.disabled = false;
-    }
-}
-
-// Función auxiliar para añadir recluta
-function addReclutaFinal(nombre, email, telefono, puesto, estado, notas) {
-    // Crear un nuevo ID
-    const nuevoId = reclutas && reclutas.length > 0 ? Math.max(...reclutas.map(r => r.id)) + 1 : 1;
-    
-    // Crear objeto de nuevo recluta
-    const nuevoRecluta = {
-        id: nuevoId,
-        nombre: nombre,
-        email: email,
-        telefono: telefono,
-        estado: estado,
-        foto_url: reclutaImage ? URL.createObjectURL(reclutaImage) : '/api/placeholder/40/40',
-        fecha_registro: new Date().toISOString().split('T')[0],
-        puesto: puesto,
-        notas: notas
-    };
-    
-    // Añadir a la lista local
-    reclutas.push(nuevoRecluta);
-    
-    // Cerrar modal
-    closeAddReclutaModal();
-    
-    // Refrescar lista
-    displayReclutas(reclutas);
-    
-    // Mostrar notificación
-    showNotification('Recluta añadido correctamente', 'success');
-}
-
-// Ver detalles de un recluta
-function viewRecluta(id) {
-    if (!reclutas || reclutas.length === 0) {
-        showNotification('No hay reclutas cargados', 'error');
-        return;
-    }
-    
-    const recluta = reclutas.find(r => r.id === id);
-    if (!recluta) {
-        showNotification('Recluta no encontrado', 'error');
-        return;
-    }
-    
-    currentReclutaId = id;
-    
-    // Rellenar los datos en el modal
-    const detailsElements = {
-        nombre: document.getElementById('detail-recluta-nombre'),
-        puesto: document.getElementById('detail-recluta-puesto'),
-        email: document.getElementById('detail-recluta-email'),
-        telefono: document.getElementById('detail-recluta-telefono'),
-        fecha: document.getElementById('detail-recluta-fecha'),
-        notas: document.getElementById('detail-recluta-notas'),
-        pic: document.getElementById('detail-recluta-pic'),
-        estado: document.getElementById('detail-recluta-estado'),
-        viewButtons: document.getElementById('view-mode-buttons'),
-        editForm: document.getElementById('edit-mode-form'),
-        modal: document.getElementById('view-recluta-modal')
-    };
-    
-    if (!detailsElements.modal) {
-        showNotification('Error al mostrar detalles: Modal no encontrado', 'error');
-        return;
-    }
-    
-    // Rellenar los datos disponibles
-    if (detailsElements.nombre) detailsElements.nombre.textContent = recluta.nombre;
-    if (detailsElements.puesto) detailsElements.puesto.textContent = recluta.puesto || 'No especificado';
-    if (detailsElements.email) detailsElements.email.textContent = recluta.email;
-    if (detailsElements.telefono) detailsElements.telefono.textContent = recluta.telefono;
-    if (detailsElements.fecha) detailsElements.fecha.textContent = formatDate(recluta.fecha_registro);
-    if (detailsElements.notas) detailsElements.notas.textContent = recluta.notas || 'Sin notas';
-    if (detailsElements.pic) detailsElements.pic.src = recluta.foto_url;
-    
-    // Actualizar estado
-    if (detailsElements.estado) {
-        detailsElements.estado.textContent = recluta.estado;
-        detailsElements.estado.className = `badge badge-${recluta.estado === 'Activo' ? 'success' : (recluta.estado === 'Rechazado' ? 'danger' : 'warning')}`;
-    }
-    
-    // Mostrar la vista y ocultar la edición
-    if (detailsElements.viewButtons) detailsElements.viewButtons.style.display = 'flex';
-    if (detailsElements.editForm) detailsElements.editForm.style.display = 'none';
-    
-    // Mostrar el modal
-    detailsElements.modal.style.display = 'block';
-}
-
-// Editar un recluta directamente (para botón en la tabla)
-function editRecluta(id) {
-    viewRecluta(id);
-    setTimeout(() => {
-        enableEditMode();
-    }, 300);
-}
-
-// Pasar al modo de edición
-function enableEditMode() {
-    if (!reclutas || !currentReclutaId) return;
-    
-    const recluta = reclutas.find(r => r.id === currentReclutaId);
-    if (!recluta) return;
-    
-    // Elementos del formulario
-    const formElements = {
-        nombre: document.getElementById('edit-recluta-nombre'),
-        email: document.getElementById('edit-recluta-email'),
-        telefono: document.getElementById('edit-recluta-telefono'),
-        puesto: document.getElementById('edit-recluta-puesto'),
-        estado: document.getElementById('edit-recluta-estado'),
-        notas: document.getElementById('edit-recluta-notas'),
-        viewButtons: document.getElementById('view-mode-buttons'),
-        editForm: document.getElementById('edit-mode-form')
-    };
-    
-    // Verificar si los elementos existen
-    if (!formElements.nombre || !formElements.email || !formElements.telefono || 
-        !formElements.viewButtons || !formElements.editForm) {
-        showNotification('Error al cargar el formulario de edición', 'error');
-        return;
-    }
-    
-    // Rellenar formulario con datos actuales
-    formElements.nombre.value = recluta.nombre;
-    formElements.email.value = recluta.email;
-    formElements.telefono.value = recluta.telefono;
-    if (formElements.puesto) formElements.puesto.value = recluta.puesto || '';
-    if (formElements.estado) formElements.estado.value = recluta.estado;
-    if (formElements.notas) formElements.notas.value = recluta.notas || '';
-    
-    // Ocultar vista y mostrar edición
-    formElements.viewButtons.style.display = 'none';
-    formElements.editForm.style.display = 'block';
-}
-
-// Cancelar la edición
-function cancelEdit() {
-    const viewButtons = document.getElementById('view-mode-buttons');
-    const editForm = document.getElementById('edit-mode-form');
-    
-    if (viewButtons) viewButtons.style.display = 'flex';
-    if (editForm) editForm.style.display = 'none';
-}
-
-// Guardar cambios en el recluta
-function saveReclutaChanges() {
-    if (!reclutas || !currentReclutaId) {
-        showNotification('Error: No hay datos para guardar', 'error');
-        return;
-    }
-    
-    const index = reclutas.findIndex(r => r.id === currentReclutaId);
-    if (index === -1) {
-        showNotification('Error: Recluta no encontrado', 'error');
-        return;
-    }
-    
-    // Obtener elementos del formulario
-    const formElements = {
-        nombre: document.getElementById('edit-recluta-nombre'),
-        email: document.getElementById('edit-recluta-email'),
-        telefono: document.getElementById('edit-recluta-telefono'),
-        puesto: document.getElementById('edit-recluta-puesto'),
-        estado: document.getElementById('edit-recluta-estado'),
-        notas: document.getElementById('edit-recluta-notas'),
-        saveButton: document.querySelector('.edit-mode-buttons .btn-primary')
-    };
-    
-    // Verificar si los elementos obligatorios existen
-    if (!formElements.nombre || !formElements.email || !formElements.telefono) {
-        showNotification('Error al obtener datos del formulario', 'error');
-        return;
-    }
-    
-    // Obtener valores del formulario
-    const nombre = formElements.nombre.value;
-    const email = formElements.email.value;
-    const telefono = formElements.telefono.value;
-    const puesto = formElements.puesto ? formElements.puesto.value : '';
-    const estado = formElements.estado ? formElements.estado.value : 'En proceso';
-    const notas = formElements.notas ? formElements.notas.value : '';
-    
-    if (!nombre || !email || !telefono) {
-        showNotification('Por favor, completa los campos obligatorios', 'error');
-        return;
-    }
-    
-    // Mostrar estado de carga si el botón existe
-    if (formElements.saveButton) {
-        formElements.saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
-        formElements.saveButton.disabled = true;
-    }
-    
-    try {
-        // Simular tiempo de guardado
-        setTimeout(() => {
-            // Actualizar objeto
-            reclutas[index].nombre = nombre;
-            reclutas[index].email = email;
-            reclutas[index].telefono = telefono;
-            reclutas[index].puesto = puesto;
-            reclutas[index].estado = estado;
-            reclutas[index].notas = notas;
-            
-            // Actualizar datos en la vista
-            updateReclutaDetailsView(reclutas[index]);
-            
-            // Volver a modo vista
-            cancelEdit();
-            
-            // Refrescar lista
-            displayReclutas(reclutas);
-            
-            // Mostrar notificación
-            showNotification('Recluta actualizado correctamente', 'success');
-            
-            // Restaurar botón
-            if (formElements.saveButton) {
-                formElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
-                formElements.saveButton.disabled = false;
-            }
-        }, 800);
-    } catch (error) {
-        showNotification('Error al actualizar recluta: ' + (error.message || 'Error desconocido'), 'error');
-        
-        if (formElements.saveButton) {
-            formElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
-            formElements.saveButton.disabled = false;
-        }
-    }
-}
-
-// Actualizar la vista de detalles del recluta
-function updateReclutaDetailsView(recluta) {
-    if (!recluta) return;
-    
-    const detailsElements = {
-        nombre: document.getElementById('detail-recluta-nombre'),
-        puesto: document.getElementById('detail-recluta-puesto'),
-        email: document.getElementById('detail-recluta-email'),
-        telefono: document.getElementById('detail-recluta-telefono'),
-        notas: document.getElementById('detail-recluta-notas'),
-        estado: document.getElementById('detail-recluta-estado'),
-        fecha: document.getElementById('detail-recluta-fecha'),
-        pic: document.getElementById('detail-recluta-pic')
-    };
-    
-    // Actualizar los elementos que existan
-    if (detailsElements.nombre) detailsElements.nombre.textContent = recluta.nombre;
-    if (detailsElements.puesto) detailsElements.puesto.textContent = recluta.puesto || 'No especificado';
-    if (detailsElements.email) detailsElements.email.textContent = recluta.email;
-    if (detailsElements.telefono) detailsElements.telefono.textContent = recluta.telefono;
-    if (detailsElements.notas) detailsElements.notas.textContent = recluta.notas || 'Sin notas';
-    if (detailsElements.fecha) detailsElements.fecha.textContent = formatDate(recluta.fecha_registro);
-    if (detailsElements.pic && recluta.foto_url) detailsElements.pic.src = recluta.foto_url;
-    
-    // Actualizar estado
-    if (detailsElements.estado) {
-        detailsElements.estado.textContent = recluta.estado;
-        detailsElements.estado.className = `badge badge-${recluta.estado === 'Activo' ? 'success' : (recluta.estado === 'Rechazado' ? 'danger' : 'warning')}`;
-    }
-}
-
-function openAddReclutaModal() {
-    const modal = document.getElementById('add-recluta-modal');
-    if (modal) modal.style.display = 'block';
-
-    const saveButton = document.createElement('button');
-    saveButton.className = 'btn-primary';
-    saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
-    saveButton.onclick = saveRecluta;
-
-    const modalFooter = document.querySelector('#add-recluta-modal .modal-body');
-    if (modalFooter && !document.getElementById('guardar-recluta-btn')) {
-        saveButton.id = 'guardar-recluta-btn';
-        modalFooter.appendChild(saveButton);
-    }
-}
-
-function saveRecluta() {
-    const nombre = document.getElementById('recluta-nombre')?.value;
-    const email = document.getElementById('recluta-email')?.value;
-    const telefono = document.getElementById('recluta-telefono')?.value;
-    const estado = 'Activo'; // o puedes obtenerlo de un campo si lo tienes
-
-    if (!nombre || !email || !telefono) {
-        showNotification('Por favor, completa todos los campos del formulario', 'warning');
-        return;
-    }
-
-    const data = {
-        nombre,
-        email,
-        telefono,
-        estado
-    };
-
-    fetch('/api/reclutas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    })
-    .then(res => {
-        if (!res.ok) throw new Error('Error al guardar recluta');
-        return res.json();
-    })
-    .then(data => {
-        showNotification('Recluta guardado correctamente', 'success');
-        closeAddReclutaModal();
-        // Aquí podrías recargar la lista de reclutas si tienes una función
-        // getReclutas();
-    })
-    .catch(err => {
-        console.error(err);
-        showNotification('Error al guardar el recluta', 'error');
-    });
 }
