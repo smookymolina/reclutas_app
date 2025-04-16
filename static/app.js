@@ -977,122 +977,66 @@ function initEventListeners() {
 
 // Funcionalidad de login mejorada
 function login() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    
+    const email = document.getElementById('login-email')?.value;
+    const password = document.getElementById('login-password')?.value;
+
     if (!email || !password) {
-        showNotification('Por favor, completa todos los campos', 'error');
+        showNotification('Completa los campos de usuario y contraseña', 'warning');
         return;
     }
-    
-    // Mostrar estado de carga
+
     const loginButton = document.getElementById('login-button');
-    if (!loginButton) return;
-    
-    loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
-    loginButton.disabled = true;
-    
-    // Simular tiempo de carga (800ms)
-    setTimeout(() => {
-        try {
-            // En una implementación real, validaríamos con el servidor
-            // Personalizar nombre de usuario basado en el email
-            const userName = email.split('@')[0];
-            let formattedName = userName.charAt(0).toUpperCase() + userName.slice(1);
-            
-            currentGerente = { 
-                id: '12345', 
-                email: email,
-                nombre: formattedName, 
-                profileUrl: '/api/placeholder/100/100' 
-            };
-            
-            // Actualizar UI
-            const loginSection = document.getElementById('login-section');
-            const dashboardSection = document.getElementById('dashboard-section');
-            
-            if (loginSection) loginSection.style.display = 'none';
-            if (dashboardSection) dashboardSection.style.display = 'block';
-            
-            // Actualizar información del usuario en la UI
-            const gerenteName = document.getElementById('gerente-name');
-            const dropdownUserName = document.getElementById('dropdown-user-name');
-            const dashboardProfilePic = document.getElementById('dashboard-profile-pic');
-            
-            if (gerenteName) gerenteName.textContent = currentGerente.nombre;
-            if (dropdownUserName) dropdownUserName.textContent = currentGerente.nombre;
-            if (dashboardProfilePic) dashboardProfilePic.src = currentGerente.profileUrl;
-            
-            // Inicializar datos del usuario en el formulario de perfil
-            const userNameField = document.getElementById('user-name');
-            const userEmail = document.getElementById('user-email');
-            
-            if (userNameField) userNameField.value = currentGerente.nombre;
-            if (userEmail) userEmail.value = currentGerente.email;
-            
-            // Cargar reclutas de demostración
-            loadDemoReclutas();
-            
-            // Mostrar notificación de bienvenida
-            showNotification(`¡Bienvenido ${currentGerente.nombre}! Has iniciado sesión correctamente.`, 'success');
-            
-        } catch (error) {
-            showNotification('Error al iniciar sesión: ' + (error.message || 'Verifica tus credenciales'), 'error');
-        } finally {
-            // Restaurar el botón de login
-            if (loginButton) {
-                loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
-                loginButton.disabled = false;
-            }
+    if (loginButton) {
+        loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+        loginButton.disabled = true;
+    }
+
+    fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Credenciales inválidas");
+        return res.json();
+    })
+    .then(data => {
+        currentGerente = data.usuario;
+
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+
+        document.getElementById('gerente-name').textContent = currentGerente.email;
+        document.getElementById('dropdown-user-name').textContent = currentGerente.email;
+        document.getElementById('dashboard-profile-pic').src = "/static/default-profile.png"; // O una ruta válida
+
+        document.getElementById('user-name').value = currentGerente.email;
+        document.getElementById('user-email').value = currentGerente.email;
+
+        showNotification(`¡Bienvenido ${currentGerente.email}!`, 'success');
+    })
+    .catch(err => {
+        console.error(err);
+        showNotification('Usuario o contraseña incorrectos', 'error');
+    })
+    .finally(() => {
+        if (loginButton) {
+            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
+            loginButton.disabled = false;
         }
-    }, 800);
+    });
 }
 
 // Cierre de sesión
 function logout() {
-    // Mostrar confirmación
-    const confirmTitle = document.getElementById('confirm-title');
-    const confirmMessage = document.getElementById('confirm-message');
-    const confirmModal = document.getElementById('confirm-modal');
-    const confirmButton = document.getElementById('confirm-action-btn');
-    
-    if (!confirmTitle || !confirmMessage || !confirmModal || !confirmButton) {
-        // Si no existe el modal, hacer cierre de sesión directo
-        doLogout();
-        return;
-    }
-    
-    confirmTitle.textContent = 'Cerrar Sesión';
-    confirmMessage.textContent = '¿Estás seguro de que deseas cerrar sesión?';
-    
-    // Configurar acción de confirmación
-    confirmButton.innerHTML = '<i class="fas fa-sign-out-alt"></i> Cerrar Sesión';
-    confirmButton.className = 'btn-primary';
-    confirmButton.onclick = function() {
-        doLogout();
-        closeConfirmModal();
-    };
-    
-    // Mostrar el modal
-    confirmModal.style.display = 'block';
-}
-
-function doLogout() {
     currentGerente = null;
-    
-    // Restablecer UI
-    const loginSection = document.getElementById('login-section');
-    const dashboardSection = document.getElementById('dashboard-section');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    
-    if (loginSection) loginSection.style.display = 'block';
-    if (dashboardSection) dashboardSection.style.display = 'none';
-    if (emailInput) emailInput.value = '';
-    if (passwordInput) passwordInput.value = '';
-    
-    // Mostrar notificación
-    showNotification('Has cerrado sesión correctamente', 'success');
+    document.getElementById('login-section').style.display = 'block';
+    document.getElementById('dashboard-section').style.display = 'none';
+
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+
+    showNotification('Sesión cerrada correctamente', 'success');
 }
 
 // Cargar datos de demostración
