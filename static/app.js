@@ -59,8 +59,21 @@ function checkSession() {
             if (document.getElementById('user-phone'))
                 document.getElementById('user-phone').value = currentGerente.telefono || '';
             
-            // Cargar reclutas
-            loadReclutas();
+            // Carga la lista de reclutas desde el backend
+            function loadReclutas() {
+                fetch('/api/reclutas')
+                .then(res => res.json())
+                .then(data => {
+                    reclutas = data;
+                    displayReclutas(reclutas);
+    })
+    .catch(err => {
+        console.error('Error al cargar reclutas:', err);
+        showNotification('Error al cargar los reclutas', 'error');
+        // Si falla, cargar datos de demo como fallback
+        loadDemoReclutas();
+    });
+}
             
             // Cargar estadísticas
             loadEstadisticas();
@@ -70,23 +83,6 @@ function checkSession() {
             // No hay sesión, mostrar login
             document.getElementById('login-section').style.display = 'block';
             document.getElementById('dashboard-section').style.display = 'none';
-        });
-}
-
-// Cargar reclutas desde el backend
-function loadReclutas() {
-    fetch('/api/reclutas')
-        .then(response => {
-            if (!response.ok) throw new Error('Error al cargar reclutas');
-            return response.json();
-        })
-        .then(data => {
-            reclutas = data;
-            displayReclutas(reclutas);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Error al cargar reclutas: ' + error.message, 'error');
         });
 }
 
@@ -263,7 +259,7 @@ function initEventListeners() {
     }
 }
 
-// Funcionalidad de login mejorada
+// Mejora de la función de login para usar correctamente la API
 function login() {
     const email = document.getElementById('email')?.value;
     const password = document.getElementById('password')?.value;
@@ -284,40 +280,21 @@ function login() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
     })
-    .then(res => {
-        if (!res.ok) throw new Error("Credenciales inválidas");
-        return res.json();
-    })
+    .then(res => res.json())
     .then(data => {
-        currentGerente = data.usuario;
-
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('dashboard-section').style.display = 'block';
-
-        document.getElementById('gerente-name').textContent = currentGerente.nombre || currentGerente.email;
-        document.getElementById('dropdown-user-name').textContent = currentGerente.nombre || currentGerente.email;
-        
-        // Cargar foto de perfil
-        if (currentGerente.foto_url) {
-            document.getElementById('dashboard-profile-pic').src = currentGerente.foto_url.startsWith('http')
-                ? currentGerente.foto_url
-                : (currentGerente.foto_url === 'default_profile.jpg' 
-                    ? "/api/placeholder/100/100" 
-                    : `/${currentGerente.foto_url}`);
+        if (data.success) {
+            currentGerente = data.usuario;
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('dashboard-section').style.display = 'block';
+            
+            document.getElementById('gerente-name').textContent = currentGerente.email;
+            document.getElementById('dropdown-user-name').textContent = currentGerente.email;
+            
+            showNotification(`¡Bienvenido ${currentGerente.email}!`, 'success');
+            loadReclutas(); // Cargar reclutas desde el backend
         } else {
-            document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+            throw new Error(data.message || 'Credenciales incorrectas');
         }
-
-        if (document.getElementById('user-name')) 
-            document.getElementById('user-name').value = currentGerente.nombre || '';
-        if (document.getElementById('user-email')) 
-            document.getElementById('user-email').value = currentGerente.email || '';
-        if (document.getElementById('user-phone'))
-            document.getElementById('user-phone').value = currentGerente.telefono || '';
-
-        showNotification(`¡Bienvenido ${currentGerente.nombre || currentGerente.email}!`, 'success');
-        loadReclutas();
-        loadEstadisticas();
     })
     .catch(err => {
         console.error(err);
@@ -330,6 +307,26 @@ function login() {
         }
     });
 }
+
+ // Permitir que Enter funcione en el login
+ const emailField = document.getElementById('email');
+ const passwordField = document.getElementById('password');
+ 
+ if (emailField) {
+     emailField.addEventListener('keypress', function(e) {
+         if (e.key === 'Enter') {
+             login();
+         }
+     });
+ }
+ 
+ if (passwordField) {
+     passwordField.addEventListener('keypress', function(e) {
+         if (e.key === 'Enter') {
+             login();
+         }
+     });
+ }
 
 // Cierre de sesión
 function logout() {
@@ -409,41 +406,7 @@ function displayReclutas(reclutasToDisplay) {
     updatePagination(reclutasToDisplay ? reclutasToDisplay.length : 0);
 }
 
-// Abrir modal para añadir nuevo recluta
-function openAddReclutaModal() {
-    const modal = document.getElementById('add-recluta-modal');
-    if (!modal) return;
-    
-    modal.style.display = 'block';
-    
-    // Limpiar formulario
-    const nombreInput = document.getElementById('recluta-nombre');
-    const emailInput = document.getElementById('recluta-email');
-    const telefonoInput = document.getElementById('recluta-telefono');
-    const puestoInput = document.getElementById('recluta-puesto');
-    const estadoSelect = document.getElementById('recluta-estado');
-    const notasTextarea = document.getElementById('recluta-notas');
-    const picPreview = document.getElementById('recluta-pic-preview');
-    
-    if (nombreInput) nombreInput.value = '';
-    if (emailInput) emailInput.value = '';
-    if (telefonoInput) telefonoInput.value = '';
-    if (puestoInput) puestoInput.value = '';
-    if (estadoSelect) estadoSelect.value = 'En proceso';
-    if (notasTextarea) notasTextarea.value = '';
-    
-    // Limpiar preview de imagen
-    if (picPreview) picPreview.innerHTML = '<i class="fas fa-user-circle"></i>';
-    reclutaImage = null;
-}
-
-// Cerrar modal de añadir recluta
-function closeAddReclutaModal() {
-    const modal = document.getElementById('add-recluta-modal');
-    if (modal) modal.style.display = 'none';
-}
-
-// Añadir nuevo recluta
+// Función unificada para añadir un recluta
 function addRecluta() {
     const nombreInput = document.getElementById('recluta-nombre');
     const emailInput = document.getElementById('recluta-email');
@@ -527,6 +490,11 @@ function addRecluta() {
         .catch(error => {
             console.error('Error:', error);
             showNotification('Error al añadir recluta: ' + error.message, 'error');
+            
+            // Crear simulación local si falla la API
+            if (typeof addReclutaFinal === 'function') {
+                addReclutaFinal(nombre, email, telefono, puesto, estado, notas);
+            }
         })
         .finally(() => {
             // Restaurar botón
@@ -535,6 +503,42 @@ function addRecluta() {
                 saveButton.disabled = false;
             }
         });
+}
+
+// Abrir modal para añadir nuevo recluta
+function openAddReclutaModal() {
+    const modal = document.getElementById('add-recluta-modal');
+    if (!modal) return;
+    
+    modal.style.display = 'block';
+    
+    // Limpiar formulario
+    const nombreInput = document.getElementById('recluta-nombre');
+    const emailInput = document.getElementById('recluta-email');
+    const telefonoInput = document.getElementById('recluta-telefono');
+    const puestoInput = document.getElementById('recluta-puesto');
+    const estadoSelect = document.getElementById('recluta-estado');
+    const notasTextarea = document.getElementById('recluta-notas');
+    const picPreview = document.getElementById('recluta-pic-preview');
+    
+    if (nombreInput) nombreInput.value = '';
+    if (emailInput) emailInput.value = '';
+    if (telefonoInput) telefonoInput.value = '';
+    if (puestoInput) puestoInput.value = '';
+    if (estadoSelect) estadoSelect.value = 'En proceso';
+    if (notasTextarea) notasTextarea.value = '';
+    
+    // Limpiar preview de imagen
+    if (picPreview) {
+        picPreview.innerHTML = '<i class="fas fa-user-circle"></i>';
+        reclutaImage = null;
+    }
+}
+
+// Cerrar modal de añadir recluta
+function closeAddReclutaModal() {
+    const modal = document.getElementById('add-recluta-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 // Ver detalles de un recluta
