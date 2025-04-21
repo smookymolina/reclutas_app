@@ -17,7 +17,7 @@ app.config['SECRET_KEY'] = 'clave_secreta_muy_segura'
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 db.init_app(app)
 
-IPS_PERMITIDAS = ['127.0.0.1', '192.168.1.100']  # Añade aquí las IPs concretas
+IPS_PERMITIDAS = ['127.0.0.1', '192.168.1.100','192.168.110.248']  # Añade aquí las IPs concretas
 
 # Asegurar que existe el directorio de uploads
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
