@@ -259,7 +259,7 @@ function initEventListeners() {
     }
 }
 
-// Mejora de la función de login para usar correctamente la API
+// Funcionalidad de login mejorada
 function login() {
     const email = document.getElementById('email')?.value;
     const password = document.getElementById('password')?.value;
@@ -275,26 +275,68 @@ function login() {
         loginButton.disabled = true;
     }
 
+    // Para pruebas (si la API no está funcionando):
+    if (email === 'admin@example.com' && password === 'admin') {
+        currentGerente = { email: email, id: 1 };
+        
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+        
+        document.getElementById('gerente-name').textContent = email;
+        document.getElementById('dropdown-user-name').textContent = email;
+        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+        
+        if (document.getElementById('user-name')) 
+            document.getElementById('user-name').value = email;
+        if (document.getElementById('user-email')) 
+            document.getElementById('user-email').value = email;
+        
+        // Extraer el nombre de usuario del email (parte antes del @)
+        const nombreUsuario = email.split('@')[0];
+        // Capitalizar la primera letra del nombre
+        const nombreCapitalizado = nombreUsuario.charAt(0).toUpperCase() + nombreUsuario.slice(1);
+        showNotification(`Bienvenido, ${nombreCapitalizado}`, 'success');
+        loadDemoReclutas();
+        
+        // Restablecer botón de login
+        if (loginButton) {
+            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
+            loginButton.disabled = false;
+        }
+        return; // Importante: terminar la función aquí para evitar la llamada fetch
+    }
+
+    // Solo intentar la llamada fetch si no son las credenciales de prueba
     fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
     })
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) throw new Error("Credenciales inválidas");
+        return res.json();
+    })
     .then(data => {
-        if (data.success) {
-            currentGerente = data.usuario;
-            document.getElementById('login-section').style.display = 'none';
-            document.getElementById('dashboard-section').style.display = 'block';
-            
-            document.getElementById('gerente-name').textContent = currentGerente.email;
-            document.getElementById('dropdown-user-name').textContent = currentGerente.email;
-            
-            showNotification(`¡Bienvenido ${currentGerente.email}!`, 'success');
-            loadReclutas(); // Cargar reclutas desde el backend
-        } else {
-            throw new Error(data.message || 'Credenciales incorrectas');
-        }
+        currentGerente = data.usuario;
+
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+
+        document.getElementById('gerente-name').textContent = currentGerente.email;
+        document.getElementById('dropdown-user-name').textContent = currentGerente.email;
+        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+
+        if (document.getElementById('user-name')) 
+            document.getElementById('user-name').value = currentGerente.email;
+        if (document.getElementById('user-email')) 
+            document.getElementById('user-email').value = currentGerente.email;
+
+        // Extraer el nombre de usuario del email (parte antes del @)
+        const nombreUsuario = currentGerente.email.split('@')[0];
+        // Capitalizar la primera letra del nombre
+        const nombreCapitalizado = nombreUsuario.charAt(0).toUpperCase() + nombreUsuario.slice(1);
+        showNotification(`Bienvenido, ${nombreCapitalizado}`, 'success');
+        loadDemoReclutas();
     })
     .catch(err => {
         console.error(err);
