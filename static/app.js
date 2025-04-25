@@ -5,6 +5,10 @@ let reclutaImage = null;
 let currentReclutaId = null;
 let reclutas = [];
 let darkMode = false;
+let calendarEvents = [];
+let currentDate = new Date();
+let currentMonth = currentDate.getMonth();
+let currentYear = currentDate.getFullYear();
 
 // Evento para cuando se carga completamente el documento
 document.addEventListener('DOMContentLoaded', function() {
@@ -230,33 +234,77 @@ function initEventListeners() {
     });
     
     // Navegación de calendario
-    const prevMonthBtn = document.getElementById('prev-month');
-    const nextMonthBtn = document.getElementById('next-month');
-    if (prevMonthBtn && nextMonthBtn) {
-        prevMonthBtn.addEventListener('click', () => navigateCalendar(-1));
-        nextMonthBtn.addEventListener('click', () => navigateCalendar(1));
+    function navigateCalendar(direction) {
+        const currentMonthElement = document.getElementById('current-month');
+        if (!currentMonthElement) return;
+        
+        const currentMonthText = currentMonthElement.textContent;
+        if (!currentMonthText) return;
+        
+        const parts = currentMonthText.split(' ');
+        if (parts.length !== 2) return;
+        
+        const monthName = parts[0];
+        const year = parseInt(parts[1], 10);
+        
+        if (isNaN(year)) return;
+        
+        let currentMonth = getMonthNumber(monthName);
+        if (currentMonth === -1) return;
+        
+        let currentYear = year;
+        
+        // Ajustar mes según dirección
+        currentMonth += direction;
+        
+        // Ajustar año si necesario
+        if (currentMonth < 0) {
+            currentMonth = 11;
+            currentYear--;
+        } else if (currentMonth > 11) {
+            currentMonth = 0;
+            currentYear++;
+        }
+        
+        // Actualizar título
+        currentMonthElement.textContent = `${getMonthName(currentMonth)} ${currentYear}`;
+        
+        // Regenerar días
+        generateCalendarDays(currentYear, currentMonth);
     }
+        // Añadir la inicialización para cargar eventos al principio
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar listeners de eventos para la interfaz
+    initEventListeners();
     
-    // Botón para añadir evento en calendario
-    const addEventButton = document.getElementById('add-event-button');
-    if (addEventButton) {
-        addEventButton.addEventListener('click', () => {
-            // Mostrar modal para añadir evento
-            showNotification('Esta función estará disponible próximamente', 'warning');
+    // Comprobar si hay un tema guardado
+    checkSavedTheme();
+    
+    // Inicializar calendario si estamos en esa sección
+    initCalendar();
+    
+    // Cargar eventos guardados cuando cambiamos a la sección del calendario
+    const calendarTab = document.querySelector('.dashboard-nav li a[data-section="calendario-section"]');
+    if (calendarTab) {
+        calendarTab.addEventListener('click', function() {
+            // Pequeño retraso para asegurar que la sección es visible
+            setTimeout(() => {
+                const currentMonthElement = document.getElementById('current-month');
+                if (currentMonthElement) {
+                    const parts = currentMonthElement.textContent.split(' ');
+                    if (parts.length === 2) {
+                        const month = getMonthNumber(parts[0]);
+                        const year = parseInt(parts[1], 10);
+                        
+                        if (!isNaN(year) && month !== -1) {
+                            loadSavedEvents(year, month);
+                        }
+                    }
+                }
+            }, 200);
         });
     }
-
-    // Botón de login
-    const loginButton = document.getElementById('login-button');
-    if (loginButton) {
-        loginButton.addEventListener('click', login);
-    }
-    
-    // Botón de logout
-    const logoutButton = document.getElementById('logout-button');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', logout);
-    }
+});
 }
 
 // Funcionalidad de login mejorada
@@ -988,15 +1036,404 @@ function closeScheduleModal() {
     if (modal) modal.style.display = 'none';
 }
 
-// Guardar entrevista
-function saveInterview() {
+//Sección de fecha y hora
+function updateCalendarEvents(event) {
+    if (!event) return;
+    
+    // Actualizar la interfaz para mostrar la sección de calendario
+    if (document.querySelector('.dashboard-nav')) {
+        // Cambiar a la pestaña de calendario
+        document.querySelectorAll('.dashboard-nav li').forEach(li => {
+            li.classList.remove('active');
+        });
+        const calendarTab = document.querySelector('.dashboard-nav li a[data-section="calendario-section"]');
+        if (calendarTab) {
+            calendarTab.parentElement.classList.add('active');
+        }
+        
+        // Cambiar la sección visible
+        document.querySelectorAll('.dashboard-content-section').forEach(section => {
+            section.classList.remove('active');
+        });
+        const calendarSection = document.getElementById('calendario-section');
+        if (calendarSection) {
+            calendarSection.classList.add('active');
+        }
+    }
+    
+    // Formatear la fecha para mostrarla en el calendario
+    const eventDate = new Date(event.date);
+    const day = eventDate.getDate();
+    const month = eventDate.getMonth();
+    const year = eventDate.getFullYear();
+    
+    // Asegurarse de que estamos mostrando el mes correcto
+    const currentMonthElement = document.getElementById('current-month');
+    if (currentMonthElement) {
+        // Obtener el mes actual mostrado
+        const currentMonthText = currentMonthElement.textContent;
+        const currentMonthParts = currentMonthText.split(' ');
+        
+        if (currentMonthParts.length === 2) {
+            const currentMonthName = currentMonthParts[0];
+            const currentYear = parseInt(currentMonthParts[1], 10);
+            const currentMonth = getMonthNumber(currentMonthName);
+            
+            // Si no estamos en el mes correcto, cambiar a ese mes
+            if (month !== currentMonth || year !== currentYear) {
+                currentMonthElement.textContent = `${getMonthName(month)} ${year}`;
+                generateCalendarDays(year, month);
+            }
+        }
+    }
+    
+    // Buscar o regenerar los días del calendario
+    setTimeout(() => {
+        const calendarDays = document.querySelectorAll('.calendar-day');
+        if (!calendarDays || calendarDays.length === 0) {
+            generateCalendarDays(year, month);
+        }
+        
+        // Obtener info del día 1 del mes para calcular offset
+        const firstDay = new Date(year, month, 1);
+        const startDayOfWeek = firstDay.getDay(); // 0 = Domingo
+        
+        // Calcular la posición del día en la cuadrícula
+        const dayPosition = startDayOfWeek + day - 1;
+        
+        // Obtener todos los días de nuevo por si se regeneró el calendario
+        const updatedCalendarDays = document.querySelectorAll('.calendar-day');
+        
+        // Si la posición está fuera de los límites, no hacemos nada
+        if (dayPosition < 0 || dayPosition >= updatedCalendarDays.length) return;
+        
+        // Obtener la celda del día correspondiente
+        const dayCell = updatedCalendarDays[dayPosition];
+        if (!dayCell) return;
+        
+        // Crear un elemento para el evento
+        const eventElement = document.createElement('div');
+        eventElement.className = 'calendar-event';
+        eventElement.textContent = `${event.time} - ${event.candidateName}`;
+        eventElement.dataset.eventId = event.id || Date.now(); // Usamos el ID si existe, o creamos uno nuevo
+        eventElement.dataset.eventData = JSON.stringify(event);
+        
+        // Añadir evento al hacer clic para editar/eliminar
+        eventElement.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showEventOptions(this);
+        });
+        
+        // Añadir el evento al día
+        dayCell.appendChild(eventElement);
+        
+        // También añadimos a la lista de próximas entrevistas
+        addToUpcomingEvents(event);
+    }, 100); // Pequeño retraso para asegurar que el DOM está actualizado
+}
+
+// Función para verificar solapamientos de horarios
+function checkTimeOverlap(newEvent, callback) {
+    // Obtener todos los eventos del mismo día
+    const eventsOnSameDay = getEventsForDate(newEvent.date);
+    
+    // Si no hay eventos ese día, no hay solapamiento
+    if (eventsOnSameDay.length === 0) {
+        callback(false);
+        return;
+    }
+    
+    // Convertir la hora del nuevo evento a minutos para comparar
+    const newStartTime = convertTimeToMinutes(newEvent.time);
+    const newDuration = parseInt(newEvent.duration, 10) || 60;
+    const newEndTime = newStartTime + newDuration;
+    
+    // Comprobar cada evento existente
+    for (const event of eventsOnSameDay) {
+        const eventStartTime = convertTimeToMinutes(event.time);
+        const eventDuration = parseInt(event.duration, 10) || 60;
+        const eventEndTime = eventStartTime + eventDuration;
+        
+        // Comprobar si hay solapamiento
+        if ((newStartTime >= eventStartTime && newStartTime < eventEndTime) ||
+            (newEndTime > eventStartTime && newEndTime <= eventEndTime) ||
+            (newStartTime <= eventStartTime && newEndTime >= eventEndTime)) {
+            
+            // Hay solapamiento, devolver el evento conflictivo
+            callback(true, event);
+            return;
+        }
+    }
+    
+    // No hay solapamiento
+    callback(false);
+}
+
+// Función auxiliar para convertir tiempo (HH:MM) a minutos
+function convertTimeToMinutes(timeString) {
+    if (!timeString || !timeString.includes(':')) return 0;
+    
+    const parts = timeString.split(':');
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+// Función para obtener todos los eventos para una fecha específica
+function getEventsForDate(dateString) {
+    const events = [];
+    const targetDate = new Date(dateString);
+    const day = targetDate.getDate();
+    const month = targetDate.getMonth();
+    const year = targetDate.getFullYear();
+    
+    // Obtener eventos almacenados en localStorage
+    const savedEvents = localStorage.getItem('calendarEvents');
+    if (savedEvents) {
+        try {
+            const allEvents = JSON.parse(savedEvents);
+            
+            // Filtrar por fecha
+            return allEvents.filter(event => {
+                const eventDate = new Date(event.date);
+                return eventDate.getDate() === day && 
+                       eventDate.getMonth() === month && 
+                       eventDate.getFullYear() === year;
+            });
+        } catch (error) {
+            console.error('Error al obtener eventos:', error);
+        }
+    }
+    
+    return events;
+}
+
+// Función para mostrar opciones al hacer clic en un evento
+function showEventOptions(eventElement) {
+    // Obtener datos del evento
+    let eventData;
+    try {
+        eventData = JSON.parse(eventElement.dataset.eventData);
+    } catch (error) {
+        console.error('Error al obtener datos del evento:', error);
+        return;
+    }
+    
+    // Crear un menú de opciones
+    const optionsMenu = document.createElement('div');
+    optionsMenu.className = 'event-options-menu';
+    optionsMenu.style.position = 'absolute';
+    optionsMenu.style.zIndex = '1000';
+    optionsMenu.style.backgroundColor = 'white';
+    optionsMenu.style.border = '1px solid var(--border-color)';
+    optionsMenu.style.borderRadius = 'var(--border-radius)';
+    optionsMenu.style.padding = '5px';
+    optionsMenu.style.boxShadow = 'var(--shadow-md)';
+    
+    // Calcular posición
+    const rect = eventElement.getBoundingClientRect();
+    optionsMenu.style.left = `${rect.left}px`;
+    optionsMenu.style.top = `${rect.bottom + 5}px`;
+    
+    // Añadir opciones
+    optionsMenu.innerHTML = `
+        <div class="event-option" data-action="view">
+            <i class="fas fa-eye"></i> Ver detalles
+        </div>
+        <div class="event-option" data-action="edit">
+            <i class="fas fa-edit"></i> Editar entrevista
+        </div>
+        <div class="event-option" data-action="delete">
+            <i class="fas fa-trash-alt"></i> Eliminar entrevista
+        </div>
+    `;
+    
+    // Estilos para las opciones
+    const optionElements = optionsMenu.querySelectorAll('.event-option');
+    optionElements.forEach(option => {
+        option.style.padding = '8px 12px';
+        option.style.cursor = 'pointer';
+        option.style.display = 'flex';
+        option.style.alignItems = 'center';
+        option.style.gap = '5px';
+        
+        option.addEventListener('mouseover', function() {
+            this.style.backgroundColor = 'rgba(0, 123, 255, 0.1)';
+        });
+        
+        option.addEventListener('mouseout', function() {
+            this.style.backgroundColor = 'transparent';
+        });
+        
+        // Añadir funcionalidad a cada opción
+        option.addEventListener('click', function() {
+            const action = this.dataset.action;
+            
+            if (action === 'view') {
+                viewEventDetails(eventData);
+            } else if (action === 'edit') {
+                editEvent(eventData, eventElement);
+            } else if (action === 'delete') {
+                deleteEvent(eventData, eventElement);
+            }
+            
+            // Cerrar menú
+            document.body.removeChild(optionsMenu);
+        });
+    });
+    
+    // Añadir al DOM
+    document.body.appendChild(optionsMenu);
+    
+    // Cerrar menú al hacer clic fuera
+    function closeMenu(e) {
+        if (!optionsMenu.contains(e.target) && e.target !== eventElement) {
+            document.body.removeChild(optionsMenu);
+            document.removeEventListener('click', closeMenu);
+        }
+    }
+    
+    // Retrasar para evitar que el clic actual lo cierre automáticamente
+    setTimeout(() => {
+        document.addEventListener('click', closeMenu);
+    }, 10);
+}
+
+// Función para ver detalles de un evento
+function viewEventDetails(eventData) {
+    // Crear modal para mostrar detalles
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Detalles de la Entrevista</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-user"></i> Candidato:</div>
+                    <div class="detail-value">${eventData.candidateName}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-calendar"></i> Fecha:</div>
+                    <div class="detail-value">${formatDate(eventData.date)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-clock"></i> Hora:</div>
+                    <div class="detail-value">${eventData.time}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-hourglass-half"></i> Duración:</div>
+                    <div class="detail-value">${eventData.duration || 60} minutos</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-video"></i> Tipo:</div>
+                    <div class="detail-value">${eventData.type || 'Presencial'}</div>
+                </div>
+                ${eventData.location ? `
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-map-marker-alt"></i> Ubicación:</div>
+                    <div class="detail-value">${eventData.location}</div>
+                </div>
+                ` : ''}
+                ${eventData.notes ? `
+                <div class="detail-row">
+                    <div class="detail-label"><i class="fas fa-sticky-note"></i> Notas:</div>
+                    <div class="detail-value">${eventData.notes}</div>
+                </div>
+                ` : ''}
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary close-btn">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Añadir al DOM
+    document.body.appendChild(modal);
+    
+    // Cerrar modal
+    const closeButton = modal.querySelector('.close-modal');
+    const cancelButton = modal.querySelector('.close-btn');
+    
+    closeButton.addEventListener('click', function() {
+        document.body.removeChild(modal);
+    });
+    
+    cancelButton.addEventListener('click', function() {
+        document.body.removeChild(modal);
+    });
+}
+
+// Función para editar un evento
+function editEvent(eventData, eventElement) {
+    // Aquí reutilizamos el modal de programar entrevista
+    const modal = document.getElementById('schedule-interview-modal');
+    if (!modal) {
+        showNotification('No se puede mostrar el formulario de edición', 'error');
+        return;
+    }
+    
+    // Elementos del formulario
     const interviewElements = {
         dateInput: document.getElementById('interview-date'),
         timeInput: document.getElementById('interview-time'),
-        duracionSelect: document.getElementById('interview-duration'),
-        tipoSelect: document.getElementById('interview-type'),
-        ubicacionInput: document.getElementById('interview-location'),
-        notasInput: document.getElementById('interview-notes'),
+        durationSelect: document.getElementById('interview-duration'),
+        typeSelect: document.getElementById('interview-type'),
+        locationInput: document.getElementById('interview-location'),
+        notesTextarea: document.getElementById('interview-notes'),
+        sendInvitation: document.getElementById('send-invitation'),
+        candidateName: document.getElementById('interview-candidate-name'),
+        candidatePic: document.getElementById('interview-candidate-pic'),
+        candidatePuesto: document.getElementById('interview-candidate-puesto'),
+        title: modal.querySelector('.modal-header h3'),
+        saveButton: modal.querySelector('.modal-footer .btn-primary')
+    };
+    
+    // Cambiar título del modal
+    if (interviewElements.title) {
+        interviewElements.title.textContent = 'Editar Entrevista';
+    }
+    
+    // Rellenar el formulario con los datos existentes
+    if (interviewElements.dateInput) interviewElements.dateInput.value = eventData.date;
+    if (interviewElements.timeInput) interviewElements.timeInput.value = eventData.time;
+    if (interviewElements.durationSelect) interviewElements.durationSelect.value = eventData.duration || '60';
+    if (interviewElements.typeSelect) interviewElements.typeSelect.value = eventData.type || 'presencial';
+    if (interviewElements.locationInput) interviewElements.locationInput.value = eventData.location || '';
+    if (interviewElements.notesTextarea) interviewElements.notesTextarea.value = eventData.notes || '';
+    if (interviewElements.sendInvitation) interviewElements.sendInvitation.checked = eventData.sendInvitation || false;
+    
+    // Información del candidato
+    if (interviewElements.candidateName) interviewElements.candidateName.textContent = eventData.candidateName;
+    if (interviewElements.candidatePic) interviewElements.candidatePic.src = '/api/placeholder/40/40';
+    if (interviewElements.candidatePuesto) interviewElements.candidatePuesto.textContent = 'Edición de entrevista';
+    
+    // Cambiar función del botón de guardar
+    if (interviewElements.saveButton) {
+        interviewElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+        interviewElements.saveButton.onclick = function() {
+            updateEvent(eventData, eventElement);
+        };
+    }
+    
+    // Mostrar modal
+    modal.style.display = 'block';
+}
+
+// Función para actualizar un evento
+function updateEvent(originalEventData, eventElement) {
+    const interviewElements = {
+        dateInput: document.getElementById('interview-date'),
+        timeInput: document.getElementById('interview-time'),
+        durationSelect: document.getElementById('interview-duration'),
+        typeSelect: document.getElementById('interview-type'),
+        locationInput: document.getElementById('interview-location'),
+        notesTextarea: document.getElementById('interview-notes'),
+        sendInvitation: document.getElementById('send-invitation'),
         saveButton: document.querySelector('#schedule-interview-modal .btn-primary')
     };
     
@@ -1005,15 +1442,10 @@ function saveInterview() {
         return;
     }
     
-    if (!currentReclutaId) {
-        showNotification('No se puede identificar el recluta', 'error');
-        return;
-    }
+    const date = interviewElements.dateInput.value;
+    const time = interviewElements.timeInput.value;
     
-    const fecha = interviewElements.dateInput.value;
-    const hora = interviewElements.timeInput.value;
-    
-    if (!fecha || !hora) {
+    if (!date || !time) {
         showNotification('Por favor, completa los campos de fecha y hora', 'error');
         return;
     }
@@ -1024,49 +1456,364 @@ function saveInterview() {
         interviewElements.saveButton.disabled = true;
     }
     
-    // Preparar datos para enviar
-    const entrevistaData = {
-        recluta_id: currentReclutaId,
-        fecha: fecha,
-        hora: hora,
-        duracion: interviewElements.duracionSelect ? interviewElements.duracionSelect.value : 60,
-        tipo: interviewElements.tipoSelect ? interviewElements.tipoSelect.value : 'presencial',
-        ubicacion: interviewElements.ubicacionInput ? interviewElements.ubicacionInput.value : '',
-        notas: interviewElements.notasInput ? interviewElements.notasInput.value : ''
+    // Crear objeto con nuevos datos
+    const updatedEventData = {
+        ...originalEventData,
+        date: date,
+        time: time,
+        duration: interviewElements.durationSelect ? interviewElements.durationSelect.value : '60',
+        type: interviewElements.typeSelect ? interviewElements.typeSelect.value : 'presencial',
+        location: interviewElements.locationInput ? interviewElements.locationInput.value : '',
+        notes: interviewElements.notesTextarea ? interviewElements.notesTextarea.value : '',
+        sendInvitation: interviewElements.sendInvitation ? interviewElements.sendInvitation.checked : false
     };
     
-    // Enviar petición al backend
-    fetch('/api/entrevistas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entrevistaData)
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Error al guardar entrevista');
-        return response.json();
-    })
-    .then(data => {
+    // Verificar solapamientos si cambia la fecha o la hora
+    if (date !== originalEventData.date || time !== originalEventData.time) {
+        checkTimeOverlap(updatedEventData, (hasOverlap, conflictEvent) => {
+            if (hasOverlap) {
+                showNotification(`No se puede actualizar: La entrevista se solapa con "${conflictEvent.candidateName}" a las ${conflictEvent.time}`, 'error');
+                
+                if (interviewElements.saveButton) {
+                    interviewElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+                    interviewElements.saveButton.disabled = false;
+                }
+                return;
+            }
+            
+            // No hay solapamiento, actualizar
+            completeEventUpdate(updatedEventData, eventElement);
+        });
+    } else {
+        // Si no cambia fecha ni hora, actualizar directamente
+        completeEventUpdate(updatedEventData, eventElement);
+    }
+}
+
+// Función auxiliar para completar la actualización
+function completeEventUpdate(updatedEventData, eventElement) {
+    // Eliminar el evento antiguo del DOM
+    if (eventElement && eventElement.parentNode) {
+        eventElement.parentNode.removeChild(eventElement);
+    }
+    
+    // Simular tiempo de guardado
+    setTimeout(() => {
+        // Actualizar evento en el calendario
+        updateCalendarEvents(updatedEventData);
+        
+        // Actualizar almacenamiento local de eventos
+        updateStoredEvent(updatedEventData);
+        
         // Cerrar modal
         closeScheduleModal();
         
         // Mostrar notificación
-        showNotification('Entrevista programada correctamente', 'success');
+        showNotification('Entrevista actualizada correctamente', 'success');
         
-        // Recargar estadísticas
-        loadEstadisticas();
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showNotification('Error al programar la entrevista: ' + error.message, 'error');
-    })
-    .finally(() => {
         // Restaurar botón
+        const saveButton = document.querySelector('#schedule-interview-modal .btn-primary');
+        if (saveButton) {
+            saveButton.innerHTML = '<i class="fas fa-calendar-check"></i> Programar';
+            saveButton.disabled = false;
+            
+            // Restaurar comportamiento por defecto
+            saveButton.onclick = saveInterview;
+        }
+    }, 800);
+}
+
+// Función para eliminar un evento
+function deleteEvent(eventData, eventElement) {
+    // Preguntar confirmación
+    const confirmModal = document.getElementById('confirm-modal');
+    if (!confirmModal) {
+        // Si no hay modal de confirmación, eliminar directamente
+        completeEventDeletion(eventData, eventElement);
+        return;
+    }
+    
+    // Elementos del modal
+    const confirmElements = {
+        title: document.getElementById('confirm-title'),
+        message: document.getElementById('confirm-message'),
+        confirmButton: document.getElementById('confirm-action-btn')
+    };
+    
+    // Configurar modal
+    if (confirmElements.title) confirmElements.title.textContent = 'Eliminar Entrevista';
+    if (confirmElements.message) {
+        confirmElements.message.textContent = `¿Estás seguro de que deseas eliminar la entrevista con ${eventData.candidateName}?`;
+    }
+    
+    // Configurar botón de confirmación
+    if (confirmElements.confirmButton) {
+        confirmElements.confirmButton.innerHTML = '<i class="fas fa-trash-alt"></i> Eliminar';
+        confirmElements.confirmButton.onclick = function() {
+            completeEventDeletion(eventData, eventElement);
+            closeConfirmModal();
+        };
+    }
+    
+    // Mostrar modal
+    confirmModal.style.display = 'block';
+}
+
+// Función auxiliar para completar la eliminación
+function completeEventDeletion(eventData, eventElement) {
+    // Eliminar del DOM
+    if (eventElement && eventElement.parentNode) {
+        eventElement.parentNode.removeChild(eventElement);
+    }
+    
+    // Eliminar de la lista de próximas entrevistas
+    removeFromUpcomingEvents(eventData);
+    
+    // Eliminar del almacenamiento
+    removeStoredEvent(eventData);
+    
+    // Mostrar notificación
+    showNotification('Entrevista eliminada correctamente', 'success');
+}
+
+// Función para eliminar un evento de la lista de próximos
+function removeFromUpcomingEvents(eventData) {
+    const upcomingEvents = document.querySelectorAll('.upcoming-events .event-item');
+    if (!upcomingEvents) return;
+    
+    const eventDate = new Date(eventData.date);
+    const day = eventDate.getDate();
+    const month = eventDate.getMonth();
+    
+    // Buscar el evento en la lista
+    upcomingEvents.forEach(item => {
+        const eventDay = item.querySelector('.event-day');
+        const eventMonth = item.querySelector('.event-month');
+        const eventTitle = item.querySelector('h6');
+        
+        if (eventDay && eventMonth && eventTitle) {
+            // Comprobar si coincide
+            if (parseInt(eventDay.textContent) === day && 
+                eventTitle.textContent.includes(eventData.candidateName)) {
+                // Eliminar
+                if (item.parentNode) {
+                    item.parentNode.removeChild(item);
+                }
+            }
+        }
+    });
+}
+
+// Funciones para gestionar el almacenamiento de eventos
+function updateStoredEvent(eventData) {
+    try {
+        // Obtener eventos guardados
+        let events = [];
+        const savedEvents = localStorage.getItem('calendarEvents');
+        
+        if (savedEvents) {
+            events = JSON.parse(savedEvents);
+            
+            // Buscar si ya existe este evento
+            const index = events.findIndex(event => 
+                event.id === eventData.id || 
+                (event.candidateId === eventData.candidateId && 
+                 event.date === eventData.date && 
+                 event.time === eventData.time)
+            );
+            
+            if (index !== -1) {
+                // Actualizar evento existente
+                events[index] = eventData;
+            } else {
+                // Añadir nuevo evento
+                eventData.id = eventData.id || Date.now();
+                events.push(eventData);
+            }
+        } else {
+            // Primera vez, crear array con este evento
+            eventData.id = eventData.id || Date.now();
+            events = [eventData];
+        }
+        
+        // Guardar en localStorage
+        localStorage.setItem('calendarEvents', JSON.stringify(events));
+    } catch (error) {
+        console.error('Error al guardar evento:', error);
+    }
+}
+
+function removeStoredEvent(eventData) {
+    try {
+        // Obtener eventos guardados
+        const savedEvents = localStorage.getItem('calendarEvents');
+        if (!savedEvents) return;
+        
+        let events = JSON.parse(savedEvents);
+        
+        // Filtrar para eliminar este evento
+        events = events.filter(event => 
+            event.id !== eventData.id && 
+            !(event.candidateId === eventData.candidateId && 
+              event.date === eventData.date && 
+              event.time === eventData.time)
+        );
+        
+        // Guardar lista actualizada
+        localStorage.setItem('calendarEvents', JSON.stringify(events));
+    } catch (error) {
+        console.error('Error al eliminar evento:', error);
+    }
+}
+
+// Función auxiliar para añadir un evento a la lista de próximas entrevistas
+function addToUpcomingEvents(event) {
+    const upcomingEventsContainer = document.querySelector('.upcoming-events');
+    if (!upcomingEventsContainer) return;
+    
+    // Crear elemento de evento
+    const eventItem = document.createElement('div');
+    eventItem.className = 'event-item';
+    
+    // Formatear fecha
+    const eventDate = new Date(event.date);
+    const day = eventDate.getDate();
+    const monthName = getMonthName(eventDate.getMonth()).substring(0, 3).toUpperCase();
+    
+    // Formatear hora
+    const time = event.time;
+    let displayTime;
+    if (time.includes(':')) {
+        const timeParts = time.split(':');
+        const hours = parseInt(timeParts[0], 10);
+        const minutes = timeParts[1];
+        
+        let endHours = hours;
+        if (event.duration) {
+            const durationMinutes = parseInt(event.duration, 10);
+            const totalMinutes = (hours * 60 + parseInt(minutes, 10)) + durationMinutes;
+            endHours = Math.floor(totalMinutes / 60);
+            const endMinutes = totalMinutes % 60;
+            displayTime = `${hours}:${minutes} - ${endHours}:${endMinutes.toString().padStart(2, '0')}`;
+        } else {
+            displayTime = `${hours}:${minutes}`;
+        }
+    } else {
+        displayTime = time;
+    }
+    
+    // Estructura HTML del evento
+    eventItem.innerHTML = `
+        <div class="event-date">
+            <span class="event-day">${day}</span>
+            <span class="event-month">${monthName}</span>
+        </div>
+        <div class="event-details">
+            <h6>Entrevista con ${event.candidateName}</h6>
+            <p><i class="fas fa-clock"></i> ${displayTime}</p>
+        </div>
+    `;
+    
+    // Añadir el nuevo evento al principio de la lista
+    const firstChild = upcomingEventsContainer.querySelector('.event-item');
+    if (firstChild) {
+        upcomingEventsContainer.insertBefore(eventItem, firstChild);
+    } else {
+        upcomingEventsContainer.appendChild(eventItem);
+    }
+}
+
+// Guardar entrevista
+function saveInterview() {
+    const interviewElements = {
+        dateInput: document.getElementById('interview-date'),
+        timeInput: document.getElementById('interview-time'),
+        durationSelect: document.getElementById('interview-duration'),
+        typeSelect: document.getElementById('interview-type'),
+        locationInput: document.getElementById('interview-location'),
+        notesTextarea: document.getElementById('interview-notes'),
+        sendInvitation: document.getElementById('send-invitation'),
+        candidateName: document.getElementById('interview-candidate-name'),
+        saveButton: document.querySelector('#schedule-interview-modal .btn-primary')
+    };
+    
+    if (!interviewElements.dateInput || !interviewElements.timeInput) {
+        showNotification('Error al obtener datos del formulario', 'error');
+        return;
+    }
+    
+    const date = interviewElements.dateInput.value;
+    const time = interviewElements.timeInput.value;
+    
+    if (!date || !time) {
+        showNotification('Por favor, completa los campos de fecha y hora', 'error');
+        return;
+    }
+    
+    // Mostrar estado de carga
+    if (interviewElements.saveButton) {
+        interviewElements.saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        interviewElements.saveButton.disabled = true;
+    }
+    
+    try {
+        // Obtener datos para el evento
+        const eventData = {
+            id: Date.now(), // ID único para el evento
+            date: date,
+            time: time,
+            duration: interviewElements.durationSelect ? interviewElements.durationSelect.value : '60',
+            type: interviewElements.typeSelect ? interviewElements.typeSelect.value : 'presencial',
+            location: interviewElements.locationInput ? interviewElements.locationInput.value : '',
+            notes: interviewElements.notesTextarea ? interviewElements.notesTextarea.value : '',
+            sendInvitation: interviewElements.sendInvitation ? interviewElements.sendInvitation.checked : false,
+            candidateName: interviewElements.candidateName ? interviewElements.candidateName.textContent : 'Candidato',
+            candidateId: currentReclutaId
+        };
+        
+        // Verificar solapamientos
+        checkTimeOverlap(eventData, (hasOverlap, conflictEvent) => {
+            if (hasOverlap) {
+                showNotification(`No se puede programar: La entrevista se solapa con "${conflictEvent.candidateName}" a las ${conflictEvent.time}`, 'error');
+                
+                if (interviewElements.saveButton) {
+                    interviewElements.saveButton.innerHTML = '<i class="fas fa-calendar-check"></i> Programar';
+                    interviewElements.saveButton.disabled = false;
+                }
+                return;
+            }
+            
+            // No hay solapamiento, continuar con el guardado
+            setTimeout(() => {
+                // Actualizar el calendario con el nuevo evento
+                updateCalendarEvents(eventData);
+                
+                // Guardar en almacenamiento
+                updateStoredEvent(eventData);
+                
+                // Cerrar modal
+                closeScheduleModal();
+                
+                // Mostrar notificación
+                showNotification('Entrevista programada correctamente', 'success');
+                
+                // Restaurar botón
+                if (interviewElements.saveButton) {
+                    interviewElements.saveButton.innerHTML = '<i class="fas fa-calendar-check"></i> Programar';
+                    interviewElements.saveButton.disabled = false;
+                }
+            }, 800);
+        });
+    } catch (error) {
+        showNotification('Error al programar la entrevista: ' + (error.message || 'Error desconocido'), 'error');
+        
         if (interviewElements.saveButton) {
             interviewElements.saveButton.innerHTML = '<i class="fas fa-calendar-check"></i> Programar';
             interviewElements.saveButton.disabled = false;
         }
-    });
+    }
 }
+
 
 // Cambiar contraseña
 function changePassword() {
@@ -1543,8 +2290,383 @@ function initCalendar() {
     // Generar días del calendario
     generateCalendarDays(currentYear, currentMonth);
     
-    // Cargar entrevistas para el mes actual
-    loadEntrevistas(currentYear, currentMonth);
+    // Cargar eventos guardados
+    loadSavedEvents(currentYear, currentMonth);
+}
+
+// Función para cargar eventos guardados (continuación)
+function loadSavedEvents(year, month) {
+    try {
+        const savedEvents = localStorage.getItem('calendarEvents');
+        if (!savedEvents) return;
+        
+        const events = JSON.parse(savedEvents);
+        
+        // Filtrar eventos del mes actual
+        const currentMonthEvents = events.filter(event => {
+            const eventDate = new Date(event.date);
+            return eventDate.getMonth() === month && eventDate.getFullYear() === year;
+        });
+        
+        // Mostrar cada evento en el calendario
+        currentMonthEvents.forEach(event => {
+            // Pequeño retraso para asegurar que el calendario está renderizado
+            setTimeout(() => {
+                updateCalendarEvents(event);
+            }, 200);
+        });
+        
+        // Actualizar la lista de próximas entrevistas
+        updateUpcomingEventsList();
+    } catch (error) {
+        console.error('Error al cargar eventos guardados:', error);
+    }
+}
+
+// Función para actualizar la lista de próximas entrevistas
+function updateUpcomingEventsList() {
+    const upcomingEventsContainer = document.querySelector('.upcoming-events');
+    if (!upcomingEventsContainer) return;
+    
+    // Limpiar eventos anteriores (excepto el título)
+    const title = upcomingEventsContainer.querySelector('h5');
+    if (title) {
+        upcomingEventsContainer.innerHTML = '';
+        upcomingEventsContainer.appendChild(title);
+    } else {
+        upcomingEventsContainer.innerHTML = '<h5>Próximas Entrevistas</h5>';
+    }
+    
+    try {
+        // Obtener eventos guardados
+        const savedEvents = localStorage.getItem('calendarEvents');
+        if (!savedEvents) return;
+        
+        const events = JSON.parse(savedEvents);
+        
+        // Filtrar eventos futuros y ordenar por fecha
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const futureEvents = events.filter(event => {
+            const eventDate = new Date(event.date);
+            return eventDate >= today;
+        }).sort((a, b) => {
+            const dateA = new Date(a.date);
+            const dateB = new Date(b.date);
+            
+            if (dateA.getTime() !== dateB.getTime()) {
+                return dateA - dateB;
+            }
+            
+            // Si son el mismo día, ordenar por hora
+            return convertTimeToMinutes(a.time) - convertTimeToMinutes(b.time);
+        });
+        
+        // Mostrar los próximos 5 eventos
+        const eventsToShow = futureEvents.slice(0, 5);
+        
+        // Si no hay eventos futuros
+        if (eventsToShow.length === 0) {
+            const noEvents = document.createElement('p');
+            noEvents.style.textAlign = 'center';
+            noEvents.style.color = 'var(--text-light)';
+            noEvents.style.padding = '15px 0';
+            noEvents.innerHTML = 'No hay entrevistas programadas <i class="far fa-calendar-times"></i>';
+            upcomingEventsContainer.appendChild(noEvents);
+            return;
+        }
+        
+        // Añadir cada evento a la lista
+        eventsToShow.forEach(event => {
+            addToUpcomingEvents(event);
+        });
+    } catch (error) {
+        console.error('Error al actualizar lista de próximas entrevistas:', error);
+    }
+}
+
+// Añadir esta función para cargar eventos de muestra
+function loadSampleEvents() {
+    // Eventos de muestra para el calendario (puedes eliminar esto en producción)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    
+    // Evento para hoy
+    calendarEvents.push({
+        id: 1,
+        title: 'Entrevista: Ana García',
+        date: new Date(year, month, 5, 10, 0),
+        time: '10:00',
+        duration: 60,
+        type: 'presencial',
+        location: 'Sala de reuniones 1',
+        notes: 'Preparar preguntas técnicas',
+        reclutaId: 1  // ID de Ana García en la muestra
+    });
+    
+    // Evento para 3 días después
+    calendarEvents.push({
+        id: 2,
+        title: 'Entrevista: Carlos López',
+        date: new Date(year, month, 8, 14, 30),
+        time: '14:30',
+        duration: 60,
+        type: 'virtual',
+        location: 'https://meet.google.com/abc-defg-hij',
+        notes: 'Revisar portfolio de diseño',
+        reclutaId: 2  // ID de Carlos López en la muestra
+    });
+    
+    // Evento para una semana después
+    calendarEvents.push({
+        id: 3,
+        title: 'Reunión de equipo',
+        date: new Date(year, month, 15, 9, 0),
+        time: '09:00',
+        duration: 90,
+        type: 'presencial',
+        location: 'Sala de conferencias',
+        notes: 'Discutir progreso del reclutamiento',
+        reclutaId: null  // No está asociado a un recluta
+    });
+    
+    // Actualizar la vista del calendario con los eventos
+    updateCalendarEvents();
+}
+
+//Nueva Entrevista
+function initAddEventButtonListener() {
+    const addEventButton = document.getElementById('add-event-button');
+    if (addEventButton) {
+        addEventButton.addEventListener('click', () => {
+            // Abrir el modal con la fecha actual
+            openNewEventModal(new Date());
+        });
+    }
+}
+
+// Añadir esta llamada al final de initEventListeners()
+initAddEventButtonListener();
+
+//Entrevistas Sidebar
+function updateUpcomingEvents() {
+    const upcomingEventsContainer = document.querySelector('.upcoming-events');
+    if (!upcomingEventsContainer) return;
+    
+    // Encontrar el encabezado h5
+    const header = upcomingEventsContainer.querySelector('h5');
+    
+    // Limpiar los eventos actuales pero conservar el encabezado
+    upcomingEventsContainer.innerHTML = '';
+    if (header) {
+        upcomingEventsContainer.appendChild(header);
+    } else {
+        const newHeader = document.createElement('h5');
+        newHeader.textContent = 'Próximas Entrevistas';
+        upcomingEventsContainer.appendChild(newHeader);
+    }
+    
+    // Ordenar eventos por fecha
+    const sortedEvents = [...calendarEvents].sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    // Filtrar los eventos futuros (a partir de hoy)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const futureEvents = sortedEvents.filter(event => new Date(event.date) >= today);
+    
+    // Mostrar máximo 5 próximos eventos
+    const eventsToShow = futureEvents.slice(0, 5);
+    
+    if (eventsToShow.length === 0) {
+        const noEventsMsg = document.createElement('p');
+        noEventsMsg.textContent = 'No hay próximas entrevistas programadas';
+        noEventsMsg.style.textAlign = 'center';
+        noEventsMsg.style.color = 'var(--text-light)';
+        noEventsMsg.style.padding = '10px 0';
+        upcomingEventsContainer.appendChild(noEventsMsg);
+    } else {
+        eventsToShow.forEach(event => {
+            const eventDate = new Date(event.date);
+            const monthNames = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+            
+            const eventItem = document.createElement('div');
+            eventItem.className = 'event-item';
+            eventItem.dataset.eventId = event.id;
+            
+            eventItem.innerHTML = `
+                <div class="event-date">
+                    <span class="event-day">${eventDate.getDate()}</span>
+                    <span class="event-month">${monthNames[eventDate.getMonth()]}</span>
+                </div>
+                <div class="event-details">
+                    <h6>${event.title}</h6>
+                    <p><i class="fas fa-clock"></i> ${event.time} (${event.duration} min)</p>
+                </div>
+            `;
+            
+            // Añadir evento de clic para ver detalles
+            eventItem.addEventListener('click', () => {
+                showEventDetails(event.id);
+            });
+            
+            upcomingEventsContainer.appendChild(eventItem);
+        });
+    }
+}
+
+//Modal Entrevista Calendario
+function openNewEventModal(date) {
+    const interviewModal = document.getElementById('schedule-interview-modal');
+    if (!interviewModal) return;
+    
+    // Limpiar el formulario
+    const dateInput = document.getElementById('interview-date');
+    const timeInput = document.getElementById('interview-time');
+    
+    if (dateInput) {
+        dateInput.value = date.toISOString().split('T')[0];
+    }
+    
+    if (timeInput) {
+        // Establecer una hora predeterminada (10:00 AM)
+        timeInput.value = '10:00';
+    }
+    
+    // Mostrar lista de reclutas para seleccionar
+    showReclutaSelector();
+    
+    // Mostrar el modal
+    interviewModal.style.display = 'block';
+}
+
+// Añadir esta función para seleccionar recluta desde el calendario
+function showReclutaSelector() {
+    const candidateInfoContainer = document.querySelector('.interview-candidate');
+    if (!candidateInfoContainer) return;
+    
+    // Ocultar información del candidato seleccionado previamente
+    candidateInfoContainer.style.display = 'none';
+    
+    // Crear selector de reclutas si no existe
+    if (!document.getElementById('recluta-selector-container')) {
+        const selectContainer = document.createElement('div');
+        selectContainer.id = 'recluta-selector-container';
+        selectContainer.style.marginBottom = '20px';
+        
+        const label = document.createElement('label');
+        label.textContent = 'Seleccionar candidato:';
+        label.style.display = 'block';
+        label.style.marginBottom = '8px';
+        label.style.fontWeight = '500';
+        
+        const select = document.createElement('select');
+        select.id = 'recluta-selector';
+        select.style.width = '100%';
+        select.style.padding = '10px';
+        select.style.borderRadius = 'var(--border-radius)';
+        select.style.border = '1px solid var(--border-color)';
+        
+        // Añadir opciones basadas en los reclutas disponibles
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '-- Seleccionar candidato --';
+        select.appendChild(defaultOption);
+        
+        if (reclutas && reclutas.length > 0) {
+            reclutas.forEach(recluta => {
+                const option = document.createElement('option');
+                option.value = recluta.id;
+                option.textContent = recluta.nombre;
+                select.appendChild(option);
+            });
+        }
+        
+        // Evento de cambio
+        select.addEventListener('change', function() {
+            const selectedReclutaId = parseInt(this.value);
+            if (selectedReclutaId) {
+                currentReclutaId = selectedReclutaId;
+                const recluta = reclutas.find(r => r.id === selectedReclutaId);
+                
+                // Actualizar la información del candidato
+                const candidatePic = document.getElementById('interview-candidate-pic');
+                const candidateName = document.getElementById('interview-candidate-name');
+                const candidatePuesto = document.getElementById('interview-candidate-puesto');
+                
+                if (candidatePic && recluta) candidatePic.src = recluta.foto_url || '/api/placeholder/40/40';
+                if (candidateName && recluta) candidateName.textContent = recluta.nombre;
+                if (candidatePuesto && recluta) candidatePuesto.textContent = recluta.puesto || 'No especificado';
+                
+                // Mostrar la información del candidato
+                candidateInfoContainer.style.display = 'flex';
+            } else {
+                candidateInfoContainer.style.display = 'none';
+            }
+        });
+        
+        selectContainer.appendChild(label);
+        selectContainer.appendChild(select);
+        
+        // Insertar antes del primer elemento del modal-body
+        const modalBody = document.querySelector('#schedule-interview-modal .modal-body');
+        if (modalBody) {
+            modalBody.insertBefore(selectContainer, modalBody.firstChild);
+        }
+    }
+}
+
+//Detalles Evento
+function showEventDetails(eventId) {
+    const event = calendarEvents.find(e => e.id === eventId);
+    if (!event) {
+        showNotification('Evento no encontrado', 'error');
+        return;
+    }
+    
+    // Aquí podríamos crear un modal de detalles de evento, pero por simplicidad
+    // usaremos una notificación para mostrar la información básica
+    const eventDate = new Date(event.date);
+    const formattedDate = `${eventDate.getDate()}/${eventDate.getMonth() + 1}/${eventDate.getFullYear()}`;
+    
+    let reclutaInfo = '';
+    if (event.reclutaId) {
+        const recluta = reclutas.find(r => r.id === event.reclutaId);
+        if (recluta) {
+            reclutaInfo = ` con ${recluta.nombre}`;
+        }
+    }
+    
+    const notificationMsg = `
+        Entrevista${reclutaInfo}
+        Fecha: ${formattedDate}
+        Hora: ${event.time}
+        Duración: ${event.duration} minutos
+        Tipo: ${event.type}
+        ${event.location ? 'Ubicación: ' + event.location : ''}
+    `;
+    
+    showNotification(notificationMsg, 'info', 8000); // Mayor duración para leer
+}
+
+// Modificar la función showNotification para aceptar duración personalizada
+function showNotification(message, type = 'info', duration = 5000) {
+    const notification = document.getElementById('notification');
+    const notificationMessage = document.getElementById('notification-message');
+    
+    if (!notification || !notificationMessage) return;
+    
+    notificationMessage.textContent = message;
+    
+    // Configurar tipo de notificación
+    notification.className = 'notification';
+    notification.classList.add(type);
+    notification.classList.add('show');
+    
+    // Auto-ocultar después de la duración especificada
+    setTimeout(hideNotification, duration);
 }
 
 // Cargar entrevistas del mes
@@ -1656,14 +2778,23 @@ function generateCalendarDays(year, month) {
         const dayDiv = document.createElement('div');
         dayDiv.className = 'calendar-day other-month';
         dayDiv.innerHTML = `<div class="calendar-day-number">${prevMonthDate.getDate()}</div>`;
+        dayDiv.dataset.date = prevMonthDate.toISOString().split('T')[0];
+        
+        // Añadir evento para agregar entrevista al hacer clic
+        dayDiv.addEventListener('click', function() {
+            openAddEventModal(this.dataset.date);
+        });
+        
         calendarGrid.appendChild(dayDiv);
     }
     
     // Días del mes actual
     const today = new Date();
     for (let i = 1; i <= lastDay.getDate(); i++) {
+        const currentDate = new Date(year, month, i);
         const dayDiv = document.createElement('div');
         dayDiv.className = 'calendar-day';
+        dayDiv.dataset.date = currentDate.toISOString().split('T')[0];
         
         // Marcar el día actual
         if (today.getDate() === i && today.getMonth() === month && today.getFullYear() === year) {
@@ -1671,63 +2802,178 @@ function generateCalendarDays(year, month) {
         }
         
         dayDiv.innerHTML = `<div class="calendar-day-number">${i}</div>`;
+        
+        // Añadir evento para agregar entrevista al hacer clic
+        dayDiv.addEventListener('click', function() {
+            openAddEventModal(this.dataset.date);
+        });
+        
         calendarGrid.appendChild(dayDiv);
     }
     
     // Calcular casillas restantes para completar la cuadrícula
-    const totalCells = 42; // 6 filas de 7 días
+    const totalCells = 42;
     const remainingCells = totalCells - (startDayOfWeek + lastDay.getDate());
     
     // Días del mes siguiente
     for (let i = 1; i <= remainingCells; i++) {
+        const nextMonthDate = new Date(year, month + 1, i);
         const dayDiv = document.createElement('div');
         dayDiv.className = 'calendar-day other-month';
         dayDiv.innerHTML = `<div class="calendar-day-number">${i}</div>`;
+        dayDiv.dataset.date = nextMonthDate.toISOString().split('T')[0];
+        
+        // Añadir evento para agregar entrevista al hacer clic
+        dayDiv.addEventListener('click', function() {
+            openAddEventModal(this.dataset.date);
+        });
+        
         calendarGrid.appendChild(dayDiv);
+    }
+    
+    // Después de generar todos los días, cargar los eventos guardados
+    setTimeout(() => {
+        loadSavedEvents(year, month);
+    }, 100);
+}
+
+// Función para abrir modal de añadir evento directamente desde el calendario
+function openAddEventModal(dateString) {
+    // Si no hay reclutas, mostrar mensaje
+    if (!reclutas || reclutas.length === 0) {
+        showNotification('No hay reclutas disponibles para programar entrevista', 'warning');
+        return;
+    }
+    
+    // Mostrar modal para seleccionar recluta
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'select-recluta-modal';
+    modal.style.display = 'block';
+    
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Seleccionar Candidato</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Selecciona un candidato para programar la entrevista:</p>
+                <div class="reclutas-list-container" style="max-height: 300px; overflow-y: auto; margin-top: 15px;">
+                    <table id="select-recluta-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th width="60">Foto</th>
+                                <th>Nombre</th>
+                                <th>Estado</th>
+                                <th width="80">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="select-recluta-list">
+                            <!-- Se llenará dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancel-select-recluta">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Añadir al DOM
+    document.body.appendChild(modal);
+    
+    // Llenar la tabla de reclutas
+    const reclutasList = document.getElementById('select-recluta-list');
+    if (reclutasList) {
+        reclutas.forEach(recluta => {
+            const row = document.createElement('tr');
+            const badgeClass = recluta.estado === 'Activo' ? 'badge-success' : 
+                              (recluta.estado === 'Rechazado' ? 'badge-danger' : 'badge-warning');
+            
+            row.innerHTML = `
+                <td><img src="${recluta.foto_url}" alt="${recluta.nombre}" class="recluta-foto"></td>
+                <td>${recluta.nombre}</td>
+                <td><span class="badge ${badgeClass}">${recluta.estado}</span></td>
+                <td>
+                    <button class="btn-primary" style="width: auto; padding: 5px 10px; font-size: 12px;" 
+                            onclick="selectReclutaForInterview(${recluta.id}, '${dateString}')">
+                        <i class="fas fa-calendar-plus"></i> Seleccionar
+                    </button>
+                </td>
+            `;
+            reclutasList.appendChild(row);
+        });
+    }
+    
+    // Configurar eventos para cerrar modal
+    const closeButton = modal.querySelector('.close-modal');
+    const cancelButton = document.getElementById('cancel-select-recluta');
+    
+    if (closeButton) {
+        closeButton.addEventListener('click', function() {
+            document.body.removeChild(modal);
+        });
+    }
+    
+    if (cancelButton) {
+        cancelButton.addEventListener('click', function() {
+            document.body.removeChild(modal);
+        });
     }
 }
 
-// Navegación del calendario
-function navigateCalendar(direction) {
-    const currentMonthElement = document.getElementById('current-month');
-    if (!currentMonthElement) return;
-    
-    const currentMonthText = currentMonthElement.textContent;
-    if (!currentMonthText) return;
-    
-    const parts = currentMonthText.split(' ');
-    if (parts.length !== 2) return;
-    
-    const monthName = parts[0];
-    const year = parseInt(parts[1], 10);
-    
-    if (isNaN(year)) return;
-    
-    let currentMonth = getMonthNumber(monthName);
-    if (currentMonth === -1) return;
-    
-    let currentYear = year;
-    
-    // Ajustar mes según dirección
-    currentMonth += direction;
-    
-    // Ajustar año si necesario
-    if (currentMonth < 0) {
-        currentMonth = 11;
-        currentYear--;
-    } else if (currentMonth > 11) {
-        currentMonth = 0;
-        currentYear++;
+// Función para seleccionar un recluta y abrir el modal de entrevista
+function selectReclutaForInterview(reclutaId, dateString) {
+    // Cerrar modal de selección
+    const selectModal = document.getElementById('select-recluta-modal');
+    if (selectModal) {
+        document.body.removeChild(selectModal);
     }
     
-    // Actualizar título
-    currentMonthElement.textContent = `${getMonthName(currentMonth)} ${currentYear}`;
+    // Buscar el recluta seleccionado
+    if (!reclutas) return;
     
-    // Regenerar días
-    generateCalendarDays(currentYear, currentMonth);
+    const recluta = reclutas.find(r => r.id === reclutaId);
+    if (!recluta) {
+        showNotification('Recluta no encontrado', 'error');
+        return;
+    }
     
-    // Cargar entrevistas para el nuevo mes
-    loadEntrevistas(currentYear, currentMonth);
+    currentReclutaId = reclutaId;
+    
+    // Abrir modal de programar entrevista
+    const modal = document.getElementById('schedule-interview-modal');
+    if (!modal) {
+        showNotification('No se puede mostrar el modal de entrevista', 'error');
+        return;
+    }
+    
+    // Configurar elementos del modal
+    const interviewElements = {
+        candidatePic: document.getElementById('interview-candidate-pic'),
+        candidateName: document.getElementById('interview-candidate-name'),
+        candidatePuesto: document.getElementById('interview-candidate-puesto'),
+        dateInput: document.getElementById('interview-date'),
+        timeInput: document.getElementById('interview-time')
+    };
+    
+    // Configurar datos del candidato
+    if (interviewElements.candidatePic) interviewElements.candidatePic.src = recluta.foto_url || '/api/placeholder/40/40';
+    if (interviewElements.candidateName) interviewElements.candidateName.textContent = recluta.nombre;
+    if (interviewElements.candidatePuesto) interviewElements.candidatePuesto.textContent = recluta.puesto || 'No especificado';
+    
+    // Establecer fecha seleccionada
+    if (interviewElements.dateInput) interviewElements.dateInput.value = dateString;
+    
+    // Hora por defecto (10:00 AM)
+    if (interviewElements.timeInput) interviewElements.timeInput.value = '10:00';
+    
+    // Mostrar modal
+    modal.style.display = 'block';
 }
 
 // Helpers para calendario
