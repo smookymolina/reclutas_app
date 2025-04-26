@@ -23,6 +23,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Inicializar calendario si estamos en esa sección
     initCalendar();
+    // Verificar estado de autenticación
+    checkAuthentication();
 });
 
 // Comprobar si existe una sesión de usuario activa
@@ -307,6 +309,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 }
 
+function checkAuthentication() {
+    fetch('/api/check-auth')
+        .then(response => response.json())
+        .then(data => {
+            if (data.authenticated) {
+                // Usuario ya está autenticado
+                loginSuccess(data.usuario);
+            } else {
+                // Mostrar pantalla de login
+                document.getElementById('login-section').style.display = 'block';
+                document.getElementById('dashboard-section').style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.error('Error al verificar autenticación:', error);
+            document.getElementById('login-section').style.display = 'block';
+            document.getElementById('dashboard-section').style.display = 'none';
+        });
+}
+
 // Funcionalidad de login mejorada
 function login() {
     const email = document.getElementById('email')?.value;
@@ -323,38 +345,6 @@ function login() {
         loginButton.disabled = true;
     }
 
-    // Para pruebas (si la API no está funcionando):
-    if (email === 'admin@example.com' && password === 'admin') {
-        currentGerente = { email: email, id: 1 };
-        
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('dashboard-section').style.display = 'block';
-        
-        document.getElementById('gerente-name').textContent = email;
-        document.getElementById('dropdown-user-name').textContent = email;
-        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
-        
-        if (document.getElementById('user-name')) 
-            document.getElementById('user-name').value = email;
-        if (document.getElementById('user-email')) 
-            document.getElementById('user-email').value = email;
-        
-        // Extraer el nombre de usuario del email (parte antes del @)
-        const nombreUsuario = email.split('@')[0];
-        // Capitalizar la primera letra del nombre
-        const nombreCapitalizado = nombreUsuario.charAt(0).toUpperCase() + nombreUsuario.slice(1);
-        showNotification(`Bienvenido, ${nombreCapitalizado}`, 'success');
-        loadDemoReclutas();
-        
-        // Restablecer botón de login
-        if (loginButton) {
-            loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
-            loginButton.disabled = false;
-        }
-        return; // Importante: terminar la función aquí para evitar la llamada fetch
-    }
-
-    // Solo intentar la llamada fetch si no son las credenciales de prueba
     fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -365,26 +355,11 @@ function login() {
         return res.json();
     })
     .then(data => {
-        currentGerente = data.usuario;
-
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('dashboard-section').style.display = 'block';
-
-        document.getElementById('gerente-name').textContent = currentGerente.email;
-        document.getElementById('dropdown-user-name').textContent = currentGerente.email;
-        document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
-
-        if (document.getElementById('user-name')) 
-            document.getElementById('user-name').value = currentGerente.email;
-        if (document.getElementById('user-email')) 
-            document.getElementById('user-email').value = currentGerente.email;
-
-        // Extraer el nombre de usuario del email (parte antes del @)
-        const nombreUsuario = currentGerente.email.split('@')[0];
-        // Capitalizar la primera letra del nombre
-        const nombreCapitalizado = nombreUsuario.charAt(0).toUpperCase() + nombreUsuario.slice(1);
-        showNotification(`Bienvenido, ${nombreCapitalizado}`, 'success');
-        loadDemoReclutas();
+        if (data.success) {
+            loginSuccess(data.usuario);
+        } else {
+            showNotification('Usuario o contraseña incorrectos', 'error');
+        }
     })
     .catch(err => {
         console.error(err);
@@ -396,6 +371,55 @@ function login() {
             loginButton.disabled = false;
         }
     });
+}
+
+function loginSuccess(usuario) {
+    currentGerente = usuario;
+    
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('dashboard-section').style.display = 'block';
+    
+    document.getElementById('gerente-name').textContent = usuario.email;
+    document.getElementById('dropdown-user-name').textContent = usuario.email;
+    document.getElementById('dashboard-profile-pic').src = "/api/placeholder/100/100";
+    
+    if (document.getElementById('user-name')) 
+        document.getElementById('user-name').value = usuario.email;
+    if (document.getElementById('user-email')) 
+        document.getElementById('user-email').value = usuario.email;
+    
+    showNotification(`¡Bienvenido ${usuario.email}!`, 'success');
+    
+    // Cargar datos reales de reclutas
+    loadReclutas();
+}
+
+// Agregar esta nueva función
+function loadReclutas() {
+    fetch('/api/reclutas')
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 401) {
+                    // Si no está autenticado, mostrar login
+                    document.getElementById('login-section').style.display = 'block';
+                    document.getElementById('dashboard-section').style.display = 'none';
+                    showNotification('Sesión expirada. Por favor inicie sesión nuevamente.', 'warning');
+                }
+                throw new Error('Error al cargar reclutas');
+            }
+            return response.json();
+        })
+        .then(data => {
+            reclutas = data;
+            displayReclutas(reclutas);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            // Si hay error pero tenemos datos de demostración, mostrarlos
+            if (reclutas.length === 0) {
+                loadDemoReclutas();
+            }
+        });
 }
 
  // Permitir que Enter funcione en el login
@@ -424,22 +448,21 @@ function logout() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
-    .then(res => {
-        if (!res.ok) throw new Error('Error al cerrar sesión');
-        return res.json();
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentGerente = null;
+            document.getElementById('login-section').style.display = 'block';
+            document.getElementById('dashboard-section').style.display = 'none';
+            
+            document.getElementById('email').value = '';
+            document.getElementById('password').value = '';
+            
+            showNotification('Sesión cerrada correctamente', 'success');
+        }
     })
-    .then(() => {
-        currentGerente = null;
-        document.getElementById('login-section').style.display = 'block';
-        document.getElementById('dashboard-section').style.display = 'none';
-    
-        document.getElementById('email').value = '';
-        document.getElementById('password').value = '';
-    
-        showNotification('Sesión cerrada correctamente', 'success');
-    })
-    .catch(err => {
-        console.error(err);
+    .catch(error => {
+        console.error('Error al cerrar sesión:', error);
         showNotification('Error al cerrar sesión', 'error');
     });
 }

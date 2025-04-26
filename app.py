@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask import request
 from werkzeug.utils import secure_filename
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+import secrets
 from models import db, Recluta, Usuario, Entrevista, UserSession
 from PIL import Image, ImageDraw, ImageFont
 import io
@@ -13,9 +15,18 @@ import uuid
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'clave_secreta_muy_segura'
+app.config['SECRET_KEY'] = secrets.token_hex(16)  # Clave secreta para sesiones
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 db.init_app(app)
+
+# Configurar Flask-Login - añadir después de db.init_app(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'index'  # Redirige a index cuando se requiere login
+
+@login_manager.user_loader
+def load_user(user_id):
+    return Usuario.query.get(int(user_id))
 
 IPS_PERMITIDAS = ['127.0.0.1', '192.168.1.100', '192.168.1.7']  # Añade aquí las IPs concretas
 
@@ -26,10 +37,18 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 # Crear la base de datos y un usuario de prueba si no existe
 with app.app_context():
     db.create_all()
+    # Primer admin
     if not Usuario.query.filter_by(email='admin@example.com').first():
         usuario = Usuario(email='admin@example.com')
-        usuario.password = 'admin'
+        usuario.password = 'admin'  # Se encriptará automáticamente
         db.session.add(usuario)
+        db.session.commit()
+    
+    # Segundo admin
+    if not Usuario.query.filter_by(email='admin2@example.com').first():
+        usuario2 = Usuario(email='admin2@example.com')
+        usuario2.password = 'admin2'  # Se encriptará automáticamente
+        db.session.add(usuario2)
         db.session.commit()
 
 # Función auxiliar para guardar archivos
@@ -96,45 +115,29 @@ def index():
 @app.route('/api/login', methods=['POST'])
 def login_usuario():
     data = request.get_json()
-    email = data.get('email')   
+    email = data.get('email')
     password = data.get('password')
 
     usuario = Usuario.query.filter_by(email=email).first()
-    
-    # Para depuración, añade esto temporalmente:
-    print(f"Intento de login: email={email}, password={password}")
-    print(f"Usuario encontrado: {usuario is not None}")
-    if usuario:
-        print(f"Verificación: {usuario.verificar_password(password)}")
 
-    if usuario and usuario.verificar_password(password):
-        session['usuario_id'] = usuario.id
-        session['puesto'] = usuario.puesto if hasattr(usuario, 'puesto') else 'Administrador'
-        
-        # Guardar la sesión para esta IP
-        client_ip = request.remote_addr
-        if client_ip in IPS_PERMITIDAS:
-            # Generar token único
-            import uuid
-            session_token = str(uuid.uuid4())
-            
-            # Calcular fecha de expiración (30 días)
-            from datetime import timedelta
-            expires_at = datetime.utcnow() + timedelta(days=30)
-            
-            # Guardar sesión
-            user_session = UserSession(
-                usuario_id=usuario.id,
-                ip_address=client_ip,
-                session_token=session_token,
-                expires_at=expires_at
-            )
-            db.session.add(user_session)
-            db.session.commit()
-        
+    if usuario and usuario.check_password(password):
+        login_user(usuario, remember=True)  # remember=True para mantener la sesión
         return jsonify({"success": True, "usuario": usuario.serialize()}), 200
     else:
         return jsonify({"success": False, "message": "Credenciales incorrectas"}), 401
+
+@app.route('/api/logout', methods=['POST'])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({"success": True}), 200
+
+@app.route('/api/check-auth', methods=['GET'])
+def check_auth():
+    if current_user.is_authenticated:
+        return jsonify({"authenticated": True, "usuario": current_user.serialize()}), 200
+    else:
+        return jsonify({"authenticated": False}), 401
     
 @app.before_request
 def verificar_sesion_ip():
@@ -226,9 +229,11 @@ def cambiar_password():
 
 # API de reclutas
 @app.route('/api/reclutas', methods=['GET'])
+@login_required
 def get_reclutas():
     reclutas = Recluta.query.all()
     return jsonify([r.serialize() for r in reclutas])
+
 
 @app.route('/api/reclutas/<int:id>', methods=['GET'])
 def get_recluta(id):
@@ -236,42 +241,15 @@ def get_recluta(id):
     return jsonify(recluta.serialize())
 
 @app.route('/api/reclutas', methods=['POST'])
+@login_required
 def add_recluta():
-    if request.content_type and 'multipart/form-data' in request.content_type:
-        # Form data con posible archivo
-        nombre = request.form.get('nombre')
-        email = request.form.get('email')
-        telefono = request.form.get('telefono')
-        estado = request.form.get('estado', 'En proceso')
-        puesto = request.form.get('puesto', '')
-        notas = request.form.get('notas', '')
-        
-        nuevo = Recluta(
-            nombre=nombre,
-            email=email,
-            telefono=telefono,
-            estado=estado,
-            puesto=puesto,
-            notas=notas
-        )
-        
-        if 'foto' in request.files:
-            archivo = request.files['foto']
-            if archivo and archivo.filename:
-                ruta_relativa = guardar_archivo(archivo, 'recluta')
-                nuevo.foto_url = ruta_relativa
-    else:
-        # JSON data
-        data = request.get_json()
-        nuevo = Recluta(
-            nombre=data['nombre'],
-            email=data['email'],
-            telefono=data['telefono'],
-            estado=data.get('estado', 'En proceso'),
-            puesto=data.get('puesto', ''),
-            notas=data.get('notas', '')
-        )
-    
+    data = request.get_json()
+    nuevo = Recluta(
+        nombre=data['nombre'],
+        email=data['email'],
+        telefono=data['telefono'],
+        estado=data['estado']
+    )
     db.session.add(nuevo)
     db.session.commit()
     return jsonify(nuevo.serialize()), 201

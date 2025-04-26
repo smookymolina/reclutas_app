@@ -1,5 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from flask_login import UserMixin
+import bcrypt
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
@@ -31,35 +33,28 @@ class Recluta(db.Model):
             'foto_url': self.foto_url
         }
 
-class Usuario(db.Model):
+class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-    nombre = db.Column(db.String(100))
-    telefono = db.Column(db.String(20))
-    foto_url = db.Column(db.String(200), default='default_profile.jpg')
-    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
+    password_hash = db.Column(db.String(128), nullable=False)
     
     @property
     def password(self):
         raise AttributeError('La contraseña no es un atributo legible')
-    
+        
     @password.setter
     def password(self, password):
-        self.password_hash = generate_password_hash(password)
+        # Genera un hash seguro de la contraseña
+        self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
-    def verificar_password(self, password):
-        return check_password_hash(self.password_hash, password)
-        return self.password_hash == password
+    def check_password(self, password):
+        # Verifica la contraseña
+        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
     def serialize(self):
         return {
             "id": self.id,
-            "email": self.email,
-            "nombre": self.nombre,
-            "telefono": self.telefono,
-            "foto_url": self.foto_url,
-            "fecha_registro": self.fecha_registro.isoformat() if self.fecha_registro else None
+            "email": self.email
         }
 
 class UserSession(db.Model):

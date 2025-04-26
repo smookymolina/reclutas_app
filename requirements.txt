@@ -1,4 +1,6 @@
 Flask==2.2.3
 Flask-SQLAlchemy==3.0.3
+Flask login==0.6.0
 Pillow==9.4.0
 Werkzeug==2.2.3
+bcrypt==4.0.1
