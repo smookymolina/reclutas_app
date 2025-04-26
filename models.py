@@ -8,17 +8,13 @@ db = SQLAlchemy()
 
 class Recluta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(100), nullable=False)
-    telefono = db.Column(db.String(20), nullable=False)
-    estado = db.Column(db.String(20), default='En proceso')
-    puesto = db.Column(db.String(100))
-    notas = db.Column(db.Text)
+    nombre = db.Column(db.String(100))
+    email = db.Column(db.String(100))
+    telefono = db.Column(db.String(20))
+    estado = db.Column(db.String(20))
+    puesto = db.Column(db.String(100), nullable=True)
+    notas = db.Column(db.Text, nullable=True)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
-    foto_url = db.Column(db.String(200), default='default_profile.jpg')
-    
-    # Relación con las entrevistas
-    entrevistas = db.relationship('Entrevista', backref='recluta', lazy=True, cascade="all, delete-orphan")
 
     def serialize(self):
         return {
@@ -29,8 +25,7 @@ class Recluta(db.Model):
             'estado': self.estado,
             'puesto': self.puesto,
             'notas': self.notas,
-            'fecha_registro': self.fecha_registro.isoformat() if self.fecha_registro else None,
-            'foto_url': self.foto_url
+            'fecha_registro': self.fecha_registro.strftime('%Y-%m-%d %H:%M:%S') if self.fecha_registro else None
         }
 
 class Usuario(db.Model, UserMixin):

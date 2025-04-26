@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
-from flask import request
+from flask import request   
 from werkzeug.utils import secure_filename
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import secrets
@@ -19,7 +19,7 @@ app.config['SECRET_KEY'] = secrets.token_hex(16)  # Clave secreta para sesiones
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 db.init_app(app)
 
-# Configurar Flask-Login - añadir después de db.init_app(app)
+# Configurar Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'index'  # Redirige a index cuando se requiere login
@@ -49,7 +49,6 @@ with app.app_context():
         usuario2 = Usuario(email='admin2@example.com')
         usuario2.password = 'admin2'  # Se encriptará automáticamente
         db.session.add(usuario2)
-        db.session.commit()
 
 # Función auxiliar para guardar archivos
 def guardar_archivo(archivo, tipo):
@@ -104,14 +103,95 @@ def placeholder(width, height):
 # Añadir ruta para favicon
 @app.route('/favicon.ico')
 def favicon():
-    return send_file(os.path.join(app.static_folder, 'favicon.ico'), mimetype='image/x-icon')
+    # Crear un favicon vacío
+    empty_ico = io.BytesIO()
+    img = Image.new('RGB', (16, 16), color=(255, 255, 255))
+    img.save(empty_ico, 'ICO')
+    empty_ico.seek(0)
+    return send_file(empty_ico, mimetype='image/x-icon')
 
 # Rutas principales
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# API de autenticación
+# ----- RUTAS API PARA RECLUTAS -----
+
+@app.route('/api/reclutas', methods=['GET'])
+@login_required
+def get_reclutas():
+    reclutas = Recluta.query.all()
+    return jsonify([r.serialize() for r in reclutas])
+
+@app.route('/api/reclutas/<int:id>', methods=['GET'])
+@login_required
+def get_recluta(id):
+    recluta = Recluta.query.get_or_404(id)
+    return jsonify(recluta.serialize())
+
+@app.route('/api/reclutas', methods=['POST'])
+@login_required
+def add_recluta():
+    data = request.get_json()
+    
+    # Verificar datos obligatorios
+    if not all(key in data for key in ['nombre', 'email', 'telefono', 'estado']):
+        return jsonify({"success": False, "message": "Faltan datos requeridos"}), 400
+    
+    nuevo = Recluta(
+        nombre=data['nombre'],
+        email=data['email'],
+        telefono=data['telefono'],
+        estado=data['estado'],
+        puesto=data.get('puesto', ''),
+        notas=data.get('notas', '')
+    )
+    
+    db.session.add(nuevo)
+    db.session.commit()
+    return jsonify(nuevo.serialize()), 201
+
+@app.route('/api/reclutas/<int:id>', methods=['PUT'])
+@login_required
+def update_recluta(id):
+    recluta = Recluta.query.get_or_404(id)
+    data = request.get_json()
+    
+    # Actualizar campos si están presentes
+    if 'nombre' in data:
+        recluta.nombre = data['nombre']
+    if 'email' in data:
+        recluta.email = data['email']
+    if 'telefono' in data:
+        recluta.telefono = data['telefono']
+    if 'estado' in data:
+        recluta.estado = data['estado']
+    if 'puesto' in data:
+        recluta.puesto = data['puesto']
+    if 'notas' in data:
+        recluta.notas = data['notas']
+    
+    db.session.commit()
+    return jsonify(recluta.serialize())
+
+@app.route('/api/reclutas/<int:id>', methods=['DELETE'])
+@login_required
+def delete_recluta(id):
+    recluta = Recluta.query.get_or_404(id)
+    
+    # Si el recluta tiene una foto personalizada, eliminarla
+    if hasattr(recluta, 'foto_url') and recluta.foto_url and recluta.foto_url != 'default_profile.jpg' and os.path.exists(recluta.foto_url):
+        try:
+            os.remove(recluta.foto_url)
+        except:
+            pass
+    
+    db.session.delete(recluta)
+    db.session.commit()
+    return jsonify({"success": True, "message": "Recluta eliminado correctamente"})
+
+# ----- RUTAS PARA AUTENTICACIÓN -----
+
 @app.route('/api/login', methods=['POST'])
 def login_usuario():
     data = request.get_json()
@@ -128,7 +208,7 @@ def login_usuario():
 
 @app.route('/api/logout', methods=['POST'])
 @login_required
-def logout():
+def logout_usuario():
     logout_user()
     return jsonify({"success": True}), 200
 
@@ -138,49 +218,13 @@ def check_auth():
         return jsonify({"authenticated": True, "usuario": current_user.serialize()}), 200
     else:
         return jsonify({"authenticated": False}), 401
-    
-@app.before_request
-def verificar_sesion_ip():
-    # No verificar para rutas públicas o de API
-    if request.path == '/' or request.path.startswith('/static/') or request.path == '/api/login':
-        return None
-        
-    # Si no hay una sesión activa, verificar si la IP está en la lista permitida
-    if 'usuario_id' not in session:
-        client_ip = request.remote_addr
-        
-        if client_ip in IPS_PERMITIDAS:
-            # Intentar recuperar la última sesión para esta IP
-            last_session = UserSession.query.filter_by(ip_address=client_ip).order_by(UserSession.id.desc()).first()
-            
-            if last_session and last_session.is_valid:
-                # Recuperar usuario
-                usuario = Usuario.query.get(last_session.usuario_id)
-                if usuario:
-                    session['usuario_id'] = usuario.id
-                    session['puesto'] = usuario.puesto if hasattr(usuario, 'puesto') else 'Administrador'
 
-@app.route('/api/logout', methods=['POST'])
-def logout_usuario():
-    session.pop('usuario_id', None)
-    return jsonify({"success": True, "message": "Sesión cerrada correctamente"}), 200
-
-@app.route('/api/usuario', methods=['GET'])
-def get_usuario_actual():
-    usuario_id = session.get('usuario_id')
-    if not usuario_id:
-        return jsonify({"error": "No hay sesión activa"}), 401
-    
-    usuario = Usuario.query.get_or_404(usuario_id)
-    return jsonify(usuario.serialize())
+# ----- RUTAS PARA GESTIÓN DE PERFIL -----
 
 @app.route('/api/perfil', methods=['PUT'])
+@login_required
 def actualizar_perfil():
-    usuario_id = session.get('usuario_id')
-    if not usuario_id:
-        return jsonify({"error": "No hay sesión activa"}), 401
-    
-    usuario = Usuario.query.get_or_404(usuario_id)
+    usuario = current_user
     
     if request.content_type and 'multipart/form-data' in request.content_type:
         # Form data con posible archivo
@@ -199,139 +243,46 @@ def actualizar_perfil():
         telefono = data.get('telefono')
     
     # Actualizar datos
-    if nombre:
+    if hasattr(usuario, 'nombre') and nombre:
         usuario.nombre = nombre
-    if telefono:
+    if hasattr(usuario, 'telefono') and telefono:
         usuario.telefono = telefono
     
     db.session.commit()
     return jsonify({"success": True, "usuario": usuario.serialize()})
 
 @app.route('/api/cambiar-password', methods=['POST'])
+@login_required
 def cambiar_password():
-    usuario_id = session.get('usuario_id')
-    if not usuario_id:
-        return jsonify({"error": "No hay sesión activa"}), 401
-    
-    usuario = Usuario.query.get_or_404(usuario_id)
     data = request.get_json()
     
     current_password = data.get('current_password')
     new_password = data.get('new_password')
     
-    if not usuario.verificar_password(current_password):
+    if not current_user.check_password(current_password):
         return jsonify({"success": False, "message": "Contraseña actual incorrecta"}), 400
     
-    usuario.password = new_password
+    current_user.password = new_password
     db.session.commit()
     
     return jsonify({"success": True, "message": "Contraseña actualizada correctamente"})
 
-# API de reclutas
-@app.route('/api/reclutas', methods=['GET'])
-@login_required
-def get_reclutas():
-    reclutas = Recluta.query.all()
-    return jsonify([r.serialize() for r in reclutas])
+# ----- RUTAS PARA ENTREVISTAS -----
 
-
-@app.route('/api/reclutas/<int:id>', methods=['GET'])
-def get_recluta(id):
-    recluta = Recluta.query.get_or_404(id)
-    return jsonify(recluta.serialize())
-
-@app.route('/api/reclutas', methods=['POST'])
-@login_required
-def add_recluta():
-    data = request.get_json()
-    nuevo = Recluta(
-        nombre=data['nombre'],
-        email=data['email'],
-        telefono=data['telefono'],
-        estado=data['estado']
-    )
-    db.session.add(nuevo)
-    db.session.commit()
-    return jsonify(nuevo.serialize()), 201
-
-@app.route('/api/reclutas/<int:id>', methods=['PUT'])
-def update_recluta(id):
-    recluta = Recluta.query.get_or_404(id)
-    
-    if request.content_type and 'multipart/form-data' in request.content_type:
-        # Form data con posible archivo
-        nombre = request.form.get('nombre')
-        email = request.form.get('email')
-        telefono = request.form.get('telefono')
-        estado = request.form.get('estado')
-        puesto = request.form.get('puesto')
-        notas = request.form.get('notas')
-        
-        if nombre:
-            recluta.nombre = nombre
-        if email:
-            recluta.email = email
-        if telefono:
-            recluta.telefono = telefono
-        if estado:
-            recluta.estado = estado
-        if puesto is not None:
-            recluta.puesto = puesto
-        if notas is not None:
-            recluta.notas = notas
-        
-        if 'foto' in request.files:
-            archivo = request.files['foto']
-            if archivo and archivo.filename:
-                ruta_relativa = guardar_archivo(archivo, 'recluta')
-                recluta.foto_url = ruta_relativa
-    else:
-        # JSON data
-        data = request.get_json()
-        
-        if 'nombre' in data:
-            recluta.nombre = data['nombre']
-        if 'email' in data:
-            recluta.email = data['email']
-        if 'telefono' in data:
-            recluta.telefono = data['telefono']
-        if 'estado' in data:
-            recluta.estado = data['estado']
-        if 'puesto' in data:
-            recluta.puesto = data['puesto']
-        if 'notas' in data:
-            recluta.notas = data['notas']
-    
-    db.session.commit()
-    return jsonify(recluta.serialize())
-
-@app.route('/api/reclutas/<int:id>', methods=['DELETE'])
-def delete_recluta(id):
-    recluta = Recluta.query.get_or_404(id)
-    
-    # Si el recluta tiene una foto personalizada, eliminarla
-    if recluta.foto_url and recluta.foto_url != 'default_profile.jpg' and os.path.exists(recluta.foto_url):
-        try:
-            os.remove(recluta.foto_url)
-        except:
-            pass
-    
-    db.session.delete(recluta)
-    db.session.commit()
-    return jsonify({"success": True, "message": "Recluta eliminado correctamente"})
-
-# API de entrevistas
 @app.route('/api/entrevistas', methods=['GET'])
+@login_required
 def get_entrevistas():
     entrevistas = Entrevista.query.all()
     return jsonify([e.serialize() for e in entrevistas])
 
 @app.route('/api/entrevistas/<int:id>', methods=['GET'])
+@login_required
 def get_entrevista(id):
     entrevista = Entrevista.query.get_or_404(id)
     return jsonify(entrevista.serialize())
 
 @app.route('/api/entrevistas', methods=['POST'])
+@login_required
 def add_entrevista():
     data = request.get_json()
     
@@ -354,6 +305,7 @@ def add_entrevista():
     return jsonify(nueva.serialize()), 201
 
 @app.route('/api/entrevistas/<int:id>', methods=['PUT'])
+@login_required
 def update_entrevista(id):
     entrevista = Entrevista.query.get_or_404(id)
     data = request.get_json()
@@ -377,14 +329,17 @@ def update_entrevista(id):
     return jsonify(entrevista.serialize())
 
 @app.route('/api/entrevistas/<int:id>', methods=['DELETE'])
+@login_required
 def delete_entrevista(id):
     entrevista = Entrevista.query.get_or_404(id)
     db.session.delete(entrevista)
     db.session.commit()
     return jsonify({"success": True, "message": "Entrevista eliminada correctamente"})
 
-# API de estadísticas
+# ----- RUTAS PARA ESTADÍSTICAS -----
+
 @app.route('/api/estadisticas', methods=['GET'])
+@login_required
 def get_estadisticas():
     # Contar reclutas por estado
     total_reclutas = Recluta.query.count()

@@ -68,18 +68,31 @@ function checkSession() {
             // Carga la lista de reclutas desde el backend
             function loadReclutas() {
                 fetch('/api/reclutas')
-                .then(res => res.json())
-                .then(data => {
-                    reclutas = data;
-                    displayReclutas(reclutas);
-    })
-    .catch(err => {
-        console.error('Error al cargar reclutas:', err);
-        showNotification('Error al cargar los reclutas', 'error');
-        // Si falla, cargar datos de demo como fallback
-        loadDemoReclutas();
-    });
-}
+                    .then(response => {
+                        if (!response.ok) {
+                            if (response.status === 401) {
+                                // Si no está autenticado, mostrar login
+                                document.getElementById('login-section').style.display = 'block';
+                                document.getElementById('dashboard-section').style.display = 'none';
+                                showNotification('Sesión expirada. Por favor inicie sesión nuevamente.', 'warning');
+                                throw new Error('No autenticado');
+                            }
+                            throw new Error('Error al cargar reclutas');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        reclutas = data;
+                        displayReclutas(reclutas);
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        // Solo mostrar notificación si no es un error de autenticación
+                        if (error.message !== 'No autenticado') {
+                            showNotification('Error al cargar reclutas', 'error');
+                        }
+                    });
+            }
             
             // Cargar estadísticas
             loadEstadisticas();
@@ -373,6 +386,7 @@ function login() {
     });
 }
 
+// Función que se ejecuta después de un login exitoso
 function loginSuccess(usuario) {
     currentGerente = usuario;
     
@@ -524,11 +538,11 @@ function addRecluta() {
     const nombreInput = document.getElementById('recluta-nombre');
     const emailInput = document.getElementById('recluta-email');
     const telefonoInput = document.getElementById('recluta-telefono');
-    const puestoInput = document.getElementById('recluta-puesto');
     const estadoSelect = document.getElementById('recluta-estado');
+    const puestoInput = document.getElementById('recluta-puesto');
     const notasTextarea = document.getElementById('recluta-notas');
     
-    if (!nombreInput || !emailInput || !telefonoInput) {
+    if (!nombreInput || !emailInput || !telefonoInput || !estadoSelect) {
         showNotification('Error al obtener los campos del formulario', 'error');
         return;
     }
@@ -536,8 +550,8 @@ function addRecluta() {
     const nombre = nombreInput.value;
     const email = emailInput.value;
     const telefono = telefonoInput.value;
+    const estado = estadoSelect.value;
     const puesto = puestoInput ? puestoInput.value : '';
-    const estado = estadoSelect ? estadoSelect.value : 'En proceso';
     const notas = notasTextarea ? notasTextarea.value : '';
     
     if (!nombre || !email || !telefono) {
@@ -552,70 +566,54 @@ function addRecluta() {
         saveButton.disabled = true;
     }
     
-    // Crear FormData si hay imagen, o usar JSON si no hay
-    let requestOptions;
-    if (reclutaImage) {
-        const formData = new FormData();
-        formData.append('nombre', nombre);
-        formData.append('email', email);
-        formData.append('telefono', telefono);
-        formData.append('puesto', puesto);
-        formData.append('estado', estado);
-        formData.append('notas', notas);
-        formData.append('foto', reclutaImage);
-        
-        requestOptions = {
-            method: 'POST',
-            body: formData
-        };
-    } else {
-        requestOptions = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                nombre, email, telefono, puesto, estado, notas
-            })
-        };
-    }
+    // Datos para enviar a la API
+    const reclutaData = {
+        nombre: nombre,
+        email: email,
+        telefono: telefono,
+        estado: estado,
+        puesto: puesto,
+        notas: notas
+    };
     
-    // Enviar petición al backend
-    fetch('/api/reclutas', requestOptions)
-        .then(response => {
-            if (!response.ok) throw new Error('Error al crear recluta');
-            return response.json();
-        })
-        .then(data => {
-            // Añadir a la lista local
-            reclutas.push(data);
-            
-            // Cerrar modal
-            closeAddReclutaModal();
-            
-            // Refrescar lista
-            displayReclutas(reclutas);
-            
-            // Mostrar notificación
-            showNotification('Recluta añadido correctamente', 'success');
-            
-            // Recargar estadísticas
-            loadEstadisticas();
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Error al añadir recluta: ' + error.message, 'error');
-            
-            // Crear simulación local si falla la API
-            if (typeof addReclutaFinal === 'function') {
-                addReclutaFinal(nombre, email, telefono, puesto, estado, notas);
-            }
-        })
-        .finally(() => {
-            // Restaurar botón
-            if (saveButton) {
-                saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
-                saveButton.disabled = false;
-            }
-        });
+    // Llamada a la API
+    fetch('/api/reclutas', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(reclutaData)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error al guardar recluta');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Añadir el nuevo recluta al array local con datos completos de la API
+        reclutas.push(data);
+        
+        // Cerrar modal
+        closeAddReclutaModal();
+        
+        // Refrescar lista
+        displayReclutas(reclutas);
+        
+        // Mostrar notificación
+        showNotification('Recluta añadido correctamente', 'success');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al guardar el recluta', 'error');
+    })
+    .finally(() => {
+        // Restaurar botón
+        if (saveButton) {
+            saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Recluta';
+            saveButton.disabled = false;
+        }
+    });
 }
 
 // Abrir modal para añadir nuevo recluta
@@ -655,14 +653,17 @@ function closeAddReclutaModal() {
 }
 
 // Ver detalles de un recluta
+// Ver detalles de un recluta
 function viewRecluta(id) {
     fetch(`/api/reclutas/${id}`)
         .then(response => {
-            if (!response.ok) throw new Error('Recluta no encontrado');
+            if (!response.ok) {
+                throw new Error('Error al cargar detalles del recluta');
+            }
             return response.json();
         })
         .then(recluta => {
-            currentReclutaId = id;
+            currentReclutaId = recluta.id;
             
             // Rellenar los datos en el modal
             const detailsElements = {
@@ -684,15 +685,6 @@ function viewRecluta(id) {
                 return;
             }
             
-            // Determinar la URL de la foto
-            const fotoUrl = recluta.foto_url ? 
-                (recluta.foto_url.startsWith('http') ? 
-                    recluta.foto_url : 
-                    (recluta.foto_url === 'default_profile.jpg' ? 
-                        "/api/placeholder/100/100" : 
-                        `/${recluta.foto_url}`)) : 
-                "/api/placeholder/100/100";
-            
             // Rellenar los datos disponibles
             if (detailsElements.nombre) detailsElements.nombre.textContent = recluta.nombre;
             if (detailsElements.puesto) detailsElements.puesto.textContent = recluta.puesto || 'No especificado';
@@ -700,7 +692,7 @@ function viewRecluta(id) {
             if (detailsElements.telefono) detailsElements.telefono.textContent = recluta.telefono;
             if (detailsElements.fecha) detailsElements.fecha.textContent = formatDate(recluta.fecha_registro);
             if (detailsElements.notas) detailsElements.notas.textContent = recluta.notas || 'Sin notas';
-            if (detailsElements.pic) detailsElements.pic.src = fotoUrl;
+            if (detailsElements.pic) detailsElements.pic.src = recluta.foto_url || '/api/placeholder/100/100';
             
             // Actualizar estado
             if (detailsElements.estado) {
@@ -717,7 +709,7 @@ function viewRecluta(id) {
         })
         .catch(error => {
             console.error('Error:', error);
-            showNotification('Error al cargar detalles: ' + error.message, 'error');
+            showNotification('Error al cargar detalles del recluta', 'error');
         });
 }
 
@@ -788,7 +780,7 @@ function cancelEdit() {
 // Guardar cambios en el recluta
 function saveReclutaChanges() {
     if (!currentReclutaId) {
-        showNotification('Error: No hay datos para guardar', 'error');
+        showNotification('Error: No hay recluta seleccionado', 'error');
         return;
     }
     
@@ -804,7 +796,7 @@ function saveReclutaChanges() {
     };
     
     // Verificar si los elementos obligatorios existen
-    if (!formElements.nombre || !formElements.email || !formElements.telefono) {
+    if (!formElements.nombre || !formElements.email || !formElements.telefono || !formElements.estado) {
         showNotification('Error al obtener datos del formulario', 'error');
         return;
     }
@@ -814,7 +806,7 @@ function saveReclutaChanges() {
     const email = formElements.email.value;
     const telefono = formElements.telefono.value;
     const puesto = formElements.puesto ? formElements.puesto.value : '';
-    const estado = formElements.estado ? formElements.estado.value : 'En proceso';
+    const estado = formElements.estado.value;
     const notas = formElements.notas ? formElements.notas.value : '';
     
     if (!nombre || !email || !telefono) {
@@ -828,54 +820,60 @@ function saveReclutaChanges() {
         formElements.saveButton.disabled = true;
     }
     
-    // Crear datos para enviar
-    const requestData = {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            nombre, email, telefono, puesto, estado, notas
-        })
+    // Datos para enviar a la API
+    const reclutaData = {
+        nombre: nombre,
+        email: email,
+        telefono: telefono,
+        estado: estado,
+        puesto: puesto,
+        notas: notas
     };
     
-    // Enviar petición al backend
-    fetch(`/api/reclutas/${currentReclutaId}`, requestData)
-        .then(response => {
-            if (!response.ok) throw new Error('Error al actualizar recluta');
-            return response.json();
-        })
-        .then(reclutaActualizado => {
-            // Actualizar en la lista local
-            const index = reclutas.findIndex(r => r.id === currentReclutaId);
-            if (index !== -1) {
-                reclutas[index] = reclutaActualizado;
-            }
-            
-            // Actualizar vista de detalles
-            updateReclutaDetailsView(reclutaActualizado);
-            
-            // Volver a modo vista
-            cancelEdit();
-            
-            // Refrescar lista
-            displayReclutas(reclutas);
-            
-            // Recargar estadísticas si cambió el estado
-            loadEstadisticas();
-            
-            // Mostrar notificación
-            showNotification('Recluta actualizado correctamente', 'success');
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Error al actualizar recluta: ' + error.message, 'error');
-        })
-        .finally(() => {
-            // Restaurar botón
-            if (formElements.saveButton) {
-                formElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
-                formElements.saveButton.disabled = false;
-            }
-        });
+    // Llamada a la API
+    fetch(`/api/reclutas/${currentReclutaId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(reclutaData)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error al actualizar recluta');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Actualizar el recluta en el array local
+        const index = reclutas.findIndex(r => r.id === currentReclutaId);
+        if (index !== -1) {
+            reclutas[index] = data;
+        }
+        
+        // Actualizar datos en la vista
+        updateReclutaDetailsView(data);
+        
+        // Volver a modo vista
+        cancelEdit();
+        
+        // Refrescar lista
+        displayReclutas(reclutas);
+        
+        // Mostrar notificación
+        showNotification('Recluta actualizado correctamente', 'success');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al actualizar recluta', 'error');
+    })
+    .finally(() => {
+        // Restaurar botón
+        if (formElements.saveButton) {
+            formElements.saveButton.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+            formElements.saveButton.disabled = false;
+        }
+    });
 }
 
 // Confirmar eliminación de recluta
@@ -948,40 +946,47 @@ function showDeleteConfirmation(recluta) {
 // Eliminar recluta
 function deleteRecluta(id) {
     if (!id) {
-        showNotification('ID de recluta no válido', 'error');
+        showNotification('ID de recluta no proporcionado', 'error');
         return;
     }
     
-    fetch(`/api/reclutas/${id}`, { method: 'DELETE' })
-        .then(response => {
-            if (!response.ok) throw new Error('Error al eliminar recluta');
-            return response.json();
-        })
-        .then(() => {
-            // Eliminar de la lista local
-            const index = reclutas.findIndex(r => r.id === id);
-            if (index !== -1) {
-                reclutas.splice(index, 1);
-            }
-            
-            // Refrescar lista
-            displayReclutas(reclutas);
-            
-            // Cerrar modal de detalles si está abierto
-            if (currentReclutaId === id) {
-                closeViewReclutaModal();
-            }
-            
-            // Recargar estadísticas
-            loadEstadisticas();
-            
-            // Mostrar notificación
-            showNotification('Recluta eliminado correctamente', 'success');
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Error al eliminar recluta: ' + error.message, 'error');
-        });
+    fetch(`/api/reclutas/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error al eliminar recluta');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Eliminar de la lista local
+        const index = reclutas.findIndex(r => r.id === id);
+        if (index !== -1) {
+            reclutas.splice(index, 1);
+        }
+        
+        // Refrescar lista
+        displayReclutas(reclutas);
+        
+        // Cerrar modal de detalles si está abierto
+        if (currentReclutaId === id) {
+            closeViewReclutaModal();
+        }
+        
+        // Cerrar modal de confirmación
+        closeConfirmModal();
+        
+        // Mostrar notificación
+        showNotification('Recluta eliminado correctamente', 'success');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al eliminar recluta', 'error');
+        
+        // Cerrar modal de confirmación
+        closeConfirmModal();
+    });
 }
 
 // Cerrar modal de ver recluta
