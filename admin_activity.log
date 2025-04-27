@@ -1,6 +1,4 @@
-2025-04-25 21:29:30 - INFO - ÉXITO: Contraseña de administrador actualizada
-2025-04-25 21:29:51 - INFO - ÉXITO: Usuario eliminado - ID: 3, Email: farruko@example.com
-2025-04-25 22:14:50 - INFO - ÉXITO: Inicio de sesión exitoso en herramienta de administración
-2025-04-25 22:15:19 - INFO - ÉXITO: Listado de usuarios - Total: 1
-2025-04-25 22:16:06 - INFO - ÉXITO: Usuario creado - Email: admin2@example.com
-2025-04-25 22:17:03 - INFO - FALLO: Confirmación fallida para eliminación de usuario - ID: 2, Email: admin2@example.com
+2025-04-26 20:12:44 - INFO - ÉXITO: Contraseña de administrador actualizada
+2025-04-26 20:13:08 - INFO - ÉXITO: Listado de usuarios - Total: 2
+2025-04-26 20:14:02 - INFO - ÉXITO: Inicio de sesión exitoso en herramienta de administración
+2025-04-26 20:14:32 - INFO - ÉXITO: Contraseña actualizada - ID: 1, Email: admin@example.com

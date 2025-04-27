@@ -88,9 +88,14 @@ body {
     border-left: 4px solid var(--warning-color);
 }
 
+.notification.info {
+    border-left: 4px solid var(--primary-color);
+}
+
 #notification-message {
     flex: 1;
     padding-right: 10px;
+    white-space: pre-line;
 }
 
 #notification-close {
@@ -254,6 +259,7 @@ input[type="text"],
 input[type="tel"],
 input[type="date"],
 input[type="time"],
+input[type="color"],
 select,
 textarea {
     width: 100%;
@@ -264,6 +270,12 @@ textarea {
     transition: var(--transition);
     background-color: white;
     color: var(--text-color);
+}
+
+input[type="color"] {
+    padding: 5px;
+    height: 40px;
+    cursor: pointer;
 }
 
 .dark-mode input,
@@ -305,6 +317,11 @@ input[type="checkbox"] {
     margin-right: 8px;
 }
 
+.checkbox-label {
+    font-size: 14px;
+    color: var(--text-color);
+}
+
 .forgot-password {
     color: var(--primary-color);
     text-decoration: none;
@@ -341,6 +358,14 @@ input[type="checkbox"] {
     box-shadow: var(--shadow-sm);
 }
 
+.btn-primary:disabled {
+    background-color: var(--primary-color);
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-secondary {
     background-color: var(--secondary-color);
     color: white;
@@ -352,6 +377,14 @@ input[type="checkbox"] {
     box-shadow: var(--shadow-sm);
 }
 
+.btn-secondary:disabled {
+    background-color: var(--secondary-color);
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-danger {
     background-color: var(--danger-color);
     color: white;
@@ -361,6 +394,14 @@ input[type="checkbox"] {
     background-color: #c82333;
     transform: translateY(-2px);
     box-shadow: var(--shadow-sm);
+}
+
+.btn-danger:disabled {
+    background-color: var(--danger-color);
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 .btn-primary i, .btn-secondary i, .btn-danger i {
@@ -653,6 +694,17 @@ input[type="checkbox"] {
     padding: 20px;
 }
 
+.card-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.card-header h4 {
+    margin: 0;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
 .filter-controls {
     display: flex;
     justify-content: space-between;
@@ -678,6 +730,12 @@ input[type="checkbox"] {
     min-width: 150px;
 }
 
+.dark-mode .filter-group select {
+    background-color: #2a2b3d;
+    border-color: #3f3f3f;
+}
+
+/* Tablas */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -734,6 +792,11 @@ td {
     color: var(--danger-color);
 }
 
+.badge-info {
+    background-color: rgba(0, 123, 255, 0.15);
+    color: var(--primary-color);
+}
+
 .action-btn {
     background: none;
     border: none;
@@ -748,11 +811,13 @@ td {
     color: var(--primary-dark);
 }
 
+/* Paginación */
 .pagination {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
+    margin-top: 15px;
 }
 
 .pagination-btn {
@@ -815,6 +880,7 @@ td {
     align-items: center;
     justify-content: center;
     margin-right: 15px;
+    flex-shrink: 0;
 }
 
 .stat-icon i {
@@ -915,6 +981,30 @@ td {
     gap: 20px;
 }
 
+/* Menú de opciones para eventos del calendario */
+.event-options-menu {
+    background-color: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.dark-mode .event-options-menu {
+    background-color: var(--light-color);
+}
+
+.event-option {
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 14px;
+}
+
+.event-option:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
 .calendar-sidebar {
     background-color: white;
     border-radius: var(--border-radius);
@@ -973,6 +1063,14 @@ td {
     margin-bottom: 15px;
     padding-bottom: 15px;
     border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.event-item:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+    border-radius: var(--border-radius);
+    padding-left: 5px;
 }
 
 .event-date {
@@ -986,6 +1084,7 @@ td {
     align-items: center;
     justify-content: center;
     margin-right: 15px;
+    flex-shrink: 0;
 }
 
 .event-day {
@@ -999,10 +1098,18 @@ td {
     text-transform: uppercase;
 }
 
+.event-details {
+    flex: 1;
+    min-width: 0;
+}
+
 .event-details h6 {
     margin: 0 0 5px;
     font-weight: 600;
     color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .event-details p {
@@ -1011,10 +1118,14 @@ td {
     color: var(--text-light);
     display: flex;
     align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .event-details p i {
     margin-right: 5px;
+    flex-shrink: 0;
 }
 
 .calendar-main {
@@ -1056,6 +1167,8 @@ td {
     min-height: 60px;
     cursor: pointer;
     transition: var(--transition);
+    position: relative;
+    overflow: hidden;
 }
 
 .calendar-day:hover {
@@ -1086,433 +1199,5 @@ td {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-/* Configuración */
-.config-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-}
-
-.config-section {
-    margin-bottom: 25px;
-}
-
-.config-section:last-child {
-    margin-bottom: 0;
-}
-
-.config-section h5 {
-    font-weight: 600;
-    color: var(--text-color);
-    margin-top: 0;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.config-option {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
-.switch {
-    position: relative;
-    display: inline-block;
-    width: 50px;
-    height: 24px;
-}
-
-.switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.slider {
-    position: absolute;
     cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: var(--transition);
-}
-
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 16px;
-    width: 16px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: var(--transition);
-}
-
-input:checked + .slider {
-    background-color: var(--primary-color);
-}
-
-input:focus + .slider {
-    box-shadow: 0 0 1px var(--primary-color);
-}
-
-input:checked + .slider:before {
-    transform: translateX(26px);
-}
-
-.slider.round {
-    border-radius: 34px;
-}
-
-.slider.round:before {
-    border-radius: 50%;
-}
-
-.color-options {
-    display: flex;
-    gap: 10px;
-}
-
-.color-option {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    cursor: pointer;
-    position: relative;
-}
-
-.color-option input {
-    opacity: 0;
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    cursor: pointer;
-}
-
-.color-option.selected::after {
-    content: "✓";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 14px;
-}
-
-/* Modal */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    overflow: auto;
-}
-
-.modal-content {
-    background-color: white;
-    margin: 50px auto;
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow-lg);
-    width: 90%;
-    max-width: 600px;
-    animation: modalFadeIn 0.3s;
-}
-
-.dark-mode .modal-content {
-    background-color: var(--light-color);
-}
-
-.modal-sm {
-    max-width: 400px;
-}
-
-@keyframes modalFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(-50px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.modal-header {
-    padding: 15px 20px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.modal-header h3 {
-    margin: 0;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.close-modal {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-light);
-    cursor: pointer;
-    transition: var(--transition);
-}
-
-.close-modal:hover {
-    color: var(--danger-color);
-}
-
-.modal-body {
-    padding: 20px;
-}
-
-.modal-footer {
-    padding: 15px 20px;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-}
-
-.modal-footer button {
-    width: auto;
-}
-
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    margin-bottom: 15px;
-}
-
-.modal-profile {
-    margin: 0 auto 20px;
-}
-
-.profile-pic-preview {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background-color: #f8f9fa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 48px;
-    color: #ccc;
-    margin: 0 auto;
-}
-
-.dark-mode .profile-pic-preview {
-    background-color: #2a2b3d;
-}
-
-/* Detalles de recluta */
-.recluta-details-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.recluta-info {
-    flex: 1;
-}
-
-.recluta-info h4 {
-    margin: 0 0 5px;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.recluta-info p {
-    margin: 0 0 10px;
-    color: var(--text-light);
-}
-
-.detail-row {
-    display: flex;
-    margin-bottom: 15px;
-}
-
-.detail-label {
-    width: 120px;
-    font-weight: 600;
-    color: var(--text-color);
-    display: flex;
-    align-items: center;
-}
-
-.detail-label i {
-    margin-right: 8px;
-    color: var(--primary-color);
-}
-
-.detail-value {
-    flex: 1;
-}
-
-.view-mode-buttons,
-.edit-mode-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 20px;
-}
-
-.interview-candidate {
-    display: flex;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.interview-candidate-info {
-    margin-left: 15px;
-}
-
-.interview-candidate-info h4 {
-    margin: 0 0 5px;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.interview-candidate-info p {
-    margin: 0;
-    color: var(--text-light);
-}
-
-/* Responsive */
-@media (max-width: 992px) {
-    .config-container,
-    .charts-container {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-width: 768px) {
-    .header-container {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .header-buttons {
-        margin-top: 10px;
-        width: 100%;
-        justify-content: flex-end;
-    }
-    
-    .dashboard-header {
-        flex-direction: column;
-    }
-    
-    .profile-section {
-        margin-bottom: 15px;
-        width: 100%;
-        justify-content: center;
-    }
-    
-    .dashboard-nav {
-        width: 100%;
-        margin: 15px 0;
-    }
-    
-    .dashboard-nav ul {
-        overflow-x: auto;
-        padding-bottom: 5px;
-    }
-    
-    .profile-dropdown {
-        width: 100%;
-    }
-    
-    .profile-dropdown-button {
-        width: 100%;
-        justify-content: center;
-    }
-    
-    .calendar-container {
-        grid-template-columns: 1fr;
-    }
-    
-    .section-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .section-actions {
-        margin-top: 15px;
-        width: 100%;
-    }
-    
-    .search-container {
-        width: 100%;
-    }
-    
-    .search-container input {
-        width: 100%;
-    }
-    
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    
-    .filter-controls {
-        flex-direction: column;
-        gap: 10px;
-    }
-    
-    .stats-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-}
-
-@media (max-width: 576px) {
-    .stats-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    table {
-        display: block;
-        overflow-x: auto;
-    }
-    
-    .modal-content {
-        width: 95%;
-        margin: 30px auto;
-    }
-    
-    .recluta-details-header {
-        flex-direction: column;
-        text-align: center;
-    }
-    
-    .recluta-details-header .profile-pic-container {
-        margin: 0 auto 15px;
-    }
-    
-    .detail-row {
-        flex-direction: column;
-    }
-    
-    .detail-label {
-        width: 100%;
-        margin-bottom: 5px;
-    }
-    
-    .view-mode-buttons,
-    .edit-mode-buttons {
-        flex-direction: column;
-    }
 }
