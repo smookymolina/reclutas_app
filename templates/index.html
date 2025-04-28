@@ -69,7 +69,7 @@
                     <a href="#" class="forgot-password">¿Olvidaste tu contraseña?</a>
                 </div>
                 
-                <button type="submit" id="login-button" class="btn-primary" onclick="login()">
+                <button type="button" id="login-button" class="btn-primary">
                     <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
                 </button>
             </div>
@@ -767,5 +767,14 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.0.0/supabase.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        // Asegurarse de que el botón de login tenga el event listener adecuado
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginButton = document.getElementById('login-button');
+            if (loginButton) {
+                loginButton.addEventListener('click', login);
+            }
+        });
+    </script>
 </body>
 </html>
