@@ -22,3 +22,9 @@
 2025-04-26 20:14:50 - INFO - 127.0.0.1 - - [26/Apr/2025 20:14:50] "GET /favicon.ico HTTP/1.1" 200 -
 2025-04-26 20:15:02 - INFO - The CSRF token is missing.
 2025-04-26 20:15:02 - INFO - 127.0.0.1 - - [26/Apr/2025 20:15:02] "[31m[1mPOST /api/login HTTP/1.1[0m" 400 -
+2025-04-28 14:25:24 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-28 14:25:24 - INFO - [33mPress CTRL+C to quit[0m
+2025-04-28 14:58:53 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-28 14:58:53 - INFO - [33mPress CTRL+C to quit[0m
